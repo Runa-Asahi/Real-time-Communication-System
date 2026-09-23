@@ -87,6 +87,6 @@ tests/
 - tests/fixtures/persistence/valid-state-v1.json：程序实际生成的合法快照。
 
 课程原始任务书保持原样。deliverables 中工程报告已同步 S08/S10 实施日志与当前模块清单；约 5 页正式报告和发布冻结仍属 S11。
-`scripts/verify-release.ps1` 执行独立 Release 构建和全量 CTest，自动保存日志及源码 SHA-256 清单；可传入 `-Configuration Debug`。S10 已补齐条款追踪和跨域集成回归；S11 最终报告与发布冻结尚待完成。
+`scripts/verify-release.ps1` 执行独立 Release 构建和全量 CTest，自动保存日志及源码 SHA-256 清单；可传入 `-Configuration Debug`。`scripts/im-tokens.ps1` 生成并分发 IM 登录令牌：新增账号时用它统一改写服务端与客户端令牌文件（服务端需重启后生效）。S10 已补齐条款追踪和跨域集成回归；S11 最终报告与发布冻结尚待完成。
 
 中心转发 IM 的启动命令、假设、协议、数据结构、关键时序及验收标准见 [network-validation.md](docs/network-validation.md)。任务书条款到实现、测试的对应见 [integration-validation.md](docs/integration-validation.md)。服务器与各客户端须使用不同数据目录。通过 --im-server 启动中心服务；客户端使用 --im-host / --im-port / --im-tokens 配置后登录。服务器领域数据决定好友/群权限；消息协议不负责同步客户端领域菜单的改动。旧 P2P 菜单已移除，底层 v1 仅用于兼容回归。

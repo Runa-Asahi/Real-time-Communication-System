@@ -260,6 +260,26 @@ Get-Content data-im-b\token.json
 
 > 编码带不带 BOM 都可以，程序会自动跳过 UTF-8 BOM。真正要紧的是：**引号必须是英文双引号**，并且同一个账号在两份文件里的令牌字符完全一致。
 
+**做法三：用脚本自动生成（账号多、或以后经常新增账号时用这个）**
+
+`scripts/im-tokens.ps1` 采用“一份总表 + 自动分发”，从机制上保证服务端与客户端的令牌不会写歪：
+
+```powershell
+# 1) 为账号生成令牌（随机 32 位十六进制；已存在的账号不会被改动）
+.\scripts\im-tokens.ps1 -Add 2026001,2026002
+
+# 2) 分发：服务端文件拿全部账号，各客户端文件只拿自己那一个
+.\scripts\im-tokens.ps1 -Sync -ServerFile data-im-server/tokens.json `
+                        -Client 'data-im-a=2026001','data-im-b=2026002'
+
+# 3) 随时查看总表（令牌打码显示）
+.\scripts\im-tokens.ps1
+```
+
+总表默认是项目根目录的 `im-tokens.json`（已加入 `.gitignore`，不会提交）。
+
+> ⚠️ **新增账号后必须重启服务端**：服务端只在**启动时**读一次令牌表（`ImServerFanLX` 构造函数），运行中不会重读。客户端不用重启——它**每次登录**都会重新读自己的令牌文件。
+
 ---
 
 ### 6.5 第 4 步：启动服务端（终端 1）
@@ -376,6 +396,7 @@ DELIVER 2026001 hello-from-A
 | 聊天状态出现 `认证失败` | 客户端令牌与服务端不一致，或该账号不在服务端文件里 | 让同一账号在两份文件里取**同一串**令牌 |
 | 登录时提示 `操作失败或取消：[json.exception.out_of_range.403] key '2026001' not found` | 这个窗口的令牌文件里没有 `2026001` —— 最常见就是**两窗口弄混了**，在 B 窗口输了 A 的账号 | 让窗口与账号配对（A 输 `2026001`、B 输 `2026002`），然后重新用主菜单 `1` 登录；确实想让一个客户端能用两个账号，就把两个账号都写进它的令牌文件（服务端文件也得同时含这两个账号） |
 | 登录后提示 `账号已有在线会话` | 同一账号开了两个客户端 | 换另一个账号（如 `2026003`） |
+| 新注册的账号登录 IM 被拒（`认证失败`，或报某个 key not found） | 令牌表是服务端**启动时**读入的；且该账号必须已存在于**服务端**的领域数据里并开通 QQ | 在服务端数据目录里建好账号 → 用 `scripts/im-tokens.ps1` 把令牌写进服务端文件 → **重启服务端**；客户端重读自己的令牌文件即可 |
 | 提示 `请使用 --im-host / --im-port / --im-tokens 配置服务端后登录 QQ` | 进聊天菜单时登录的平台不是 QQ | 用主菜单 `1` 重新登录 QQ |
 
 ---
@@ -472,7 +493,7 @@ tests/               CTest 测试源与 fixtures
 benchmarks/          固定种子缓存基准
 docs/                设计、协议与分阶段验收记录
 deliverables/        课程工程报告（docx）
-scripts/             verify-release.ps1 发布验证
+scripts/             verify-release.ps1 发布验证；im-tokens.ps1 生成/分发 IM 令牌
 third_party/         nlohmann/json.hpp（固定版本，含许可）
 data/                默认数据目录（运行时生成 state.json / .lock）
 build/               构建输出（被 .gitignore 忽略，可随时删除重建）

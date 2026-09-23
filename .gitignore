@@ -25,6 +25,9 @@ compile_commands.json
 /data/*.json.prev
 /data/*.lock
 
+# ---- IM 令牌总表（含口令，不得入库）----
+/im-tokens.json
+
 # ---- 编译与本机产物 ----
 *.o
 *.obj
