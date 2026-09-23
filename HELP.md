@@ -224,17 +224,22 @@ cmake --build build -- -j4
 
 **做法一（推荐）：复制粘贴执行，不用手工改任何内容**
 
-整段粘贴到 PowerShell 里回车即可，它会写出三个文件：
+整段粘贴到 PowerShell 里回车即可，它会自己建好目录并写出三个文件：
 
 ```powershell
 $tokenA = 'fanlx-token-A-0123456789'   # 这就是令牌；可原样使用，想换就改成任意 16 字符以上字符串
 $tokenB = 'fanlx-token-B-0123456789'
 $enc = New-Object System.Text.UTF8Encoding($false)
 
+# 先确保三个数据目录存在：WriteAllText 不会自动创建目录，缺目录会报 DirectoryNotFoundException
+New-Item -ItemType Directory -Force -Path data-im-server,data-im-a,data-im-b | Out-Null
+
 [System.IO.File]::WriteAllText("$PWD\data-im-server\tokens.json", '{"2026001":"' + $tokenA + '","2026002":"' + $tokenB + '"}', $enc)
 [System.IO.File]::WriteAllText("$PWD\data-im-a\token.json",      '{"2026001":"' + $tokenA + '"}', $enc)
 [System.IO.File]::WriteAllText("$PWD\data-im-b\token.json",      '{"2026002":"' + $tokenB + '"}', $enc)
 ```
+
+> 若报 `未能找到路径"…"的一部分`（DirectoryNotFoundException），就是数据目录还没建：先执行 6.3 的三条命令，或单独跑上面那条 `New-Item`。顺序反过来不会报错——先建空目录、再 `--init-demo` 也可以。
 
 检查一下写出来的内容（应各显示一行 JSON）：
 
@@ -363,6 +368,7 @@ DELIVER 2026001 hello-from-A
 | --- | --- | --- |
 | 服务端启动即报 `IM 凭证需为已开通 QQ 的账号及至少16字符的令牌` | 令牌短于 16 字符 / 账号在服务端数据里不存在或未开通 QQ / 文件不是合法 JSON | 用 6.4 做法一重建令牌文件；确认账号写的是 `2026001`、`2026002` |
 | 服务端报读取失败 | 路径相对当前目录找不到文件 | 确认在项目根目录执行命令，且文件名确实是 `tokens.json`（不是 `tokens.json.txt`） |
+| 写令牌文件时报 `未能找到路径“…”的一部分` / `DirectoryNotFoundException` | 三个数据目录还没创建，而 `WriteAllText` 不会自动建目录 | 先执行 6.3 建目录（或跑 6.4 里的 `New-Item` 那一行），再重新写令牌文件 |
 | 客户端启动即报 `IM 客户端需要 --im-tokens 令牌文件` | 漏了 `--im-tokens` | 补上该参数 |
 | 聊天状态一直是 `连接中` | 服务端没启动 / 端口写错 / host 不是 `127.0.0.1` | 先确认终端 1 已打印 `IM server 127.0.0.1:9500` |
 | 聊天状态出现 `认证失败` | 客户端令牌与服务端不一致，或该账号不在服务端文件里 | 让同一账号在两份文件里取**同一串**令牌 |
