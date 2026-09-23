@@ -40,4 +40,16 @@ class IdentityResolverFanLX {
         const auto first = key.find('|');
         return first == std::string::npos ? std::string{} : key.substr(0, first);
     }
+    // 跨服务映射只认明示共享号码或已验证绑定；同属 userId 只用于定位，不能作为授权依据。
+    std::string verifiedTarget(const std::string &sourceKey, ServiceTypeFanLX source,
+                               ServiceTypeFanLX target) const {
+        const auto user = userForAccount(sourceKey);
+        const auto *from = accountsFanLX.findAccount(user, source);
+        const auto *to = accountsFanLX.findAccount(user, target);
+        if (!from || !to || !accountsFanLX.isAccountSubscribed(target, to->accountId)) return {};
+        if (source == target || (from->sharedId && to->sharedId && from->accountId == to->accountId) ||
+            accountsFanLX.isBound(source, from->accountId, target, to->accountId))
+            return keyOfFanLX(*to);
+        return {};
+    }
 };

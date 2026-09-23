@@ -1,8 +1,0 @@
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/fanlx_persistence.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/fanlx_app.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/cache_tests.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/group_tests.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/persistence_tests.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/test.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/edit_cache.dir
-C:/Users/25686/Desktop/OOP/build/CMakeFiles/rebuild_cache.dir

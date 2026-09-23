@@ -33,7 +33,7 @@
 
 集合限制：users 10000、accounts/subscriptions/bindings 各 30000、friendships 100000、groups/archivedGroups 各 1000；每群 members/applications/invitations/discussions 以及每子群 members 最多 10000，群域累计成员/工作流/子群记录不超过 1000000。文件总字节上限先于 DOM 分配检查，深度与重复属性在解析回调检查。
 
-versions 是局部键到最后修改 generation 的映射：users/accounts/subscriptions/bindings；friends/<结构化账号 JSON>、remarks/<账号 JSON>；group/<群键 JSON>/members、roles、currentMode、applications、invitations、discussions、name、deleted。无关群写入不提升另一个群的版本。备注/角色变化允许保守失效；S07 后续接入这些键，当前没有业务查询缓存可残留。
+versions 是局部键到最后修改 generation 的映射：users/accounts/subscriptions/bindings；friends/<结构化账号 JSON>、remarks/<账号 JSON>；group/<群键 JSON>/members、roles、currentMode、applications、invitations、discussions、name、deleted。无关群写入不提升另一个群的版本。备注/角色变化允许保守失效；S07 已将这些局部版本用于业务查询缓存键；写失败不发布版本，恢复/重启清空缓存。
 
 ## 写事务
 
@@ -54,3 +54,4 @@ Empty/UncommittedOnly 需要显式 initialize；Loaded 可读写；RecoveredRead
 recover 先核验备份，保存并验证损坏主文件证据，记录来源，再发布备份到主文件；不覆盖原有效 .prev。成功后重建内存并清会话，提交前失败保持只读并可重试。若恢复发布后重新校验/内存重建失败，应用关闭仓储，必须重启重新加载，禁止旧内存继续写入。恢复后从所选备份代数继续，损坏分支证据单独保存。
 
 saveAndClose 检查未提交变化，失败抛出明确错误、不报告成功。析构只负责资源关闭；不把析构写文件等同断电保障。支持范围是本机实测 Windows/NTFS 进程崩溃恢复；没有实测硬件断电或真实磁盘写满，不能承诺任意硬件零丢失。
+

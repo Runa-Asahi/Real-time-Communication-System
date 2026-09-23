@@ -1,3 +1,0 @@
-"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\cache_tests.dir/objects.a
-D:\mingw64\bin\ar.exe qc CMakeFiles\cache_tests.dir/objects.a @CMakeFiles\cache_tests.dir\objects1.rsp
-D:\mingw64\bin\c++.exe -Wl,--whole-archive CMakeFiles\cache_tests.dir/objects.a -Wl,--no-whole-archive -o cache_tests.exe -Wl,--out-implib,libcache_tests.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\cache_tests.dir\linkLibs.rsp

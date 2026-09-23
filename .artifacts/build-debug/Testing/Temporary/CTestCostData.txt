@@ -1,5 +1,0 @@
-smoke 4 0.151801
-cache_behavior 4 0.00413535
-group_behavior 4 0.0163544
-persistence_behavior 4 0.777457
----

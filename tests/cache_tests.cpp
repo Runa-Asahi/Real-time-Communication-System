@@ -70,7 +70,10 @@ int main() {
     assert(friends.addFriend(qqSessions[3], ServiceTypeFanLX::QQ, "q2")); // U004-U002 好友
     assert(friends.addFriend(qqSessions[3], ServiceTypeFanLX::QQ, "q3")); // U004-U003 好友
     assert(friends.commonFriends(qqSessions[3], ServiceTypeFanLX::QQ, "q1").size() == 2); // U004 与 U001 的共同好友：U002、U003
-    auto rec = friends.recommendFriends(qqSessions[0], wxSessions[0]); // 从 U001 的 QQ 好友推荐微信好友（两个会话同属一人）
+    assert(friends.recommendFriends(qqSessions[0], wxSessions[0]).empty()); // 同一人尚不足以映射未绑定对端
+    wxSessions[1].bindTo(ServiceTypeFanLX::QQ, "q2");
+    wxSessions[2].bindTo(ServiceTypeFanLX::QQ, "q3");
+    auto rec = friends.recommendFriends(qqSessions[0], wxSessions[0]); // 已验证映射后的推荐
     assert(rec.size() == 2); // 此时 U002、U003 都还不是 U001 的微信好友 → 两个推荐
     assert(friends.addFriend(wxSessions[0], ServiceTypeFanLX::Wechat, "w2")); // U001 在微信加上 U002
     assert(friends.recommendFriends(qqSessions[0], wxSessions[0]).size() == 1); // 推荐数减为 1（排除已是好友者）
@@ -120,7 +123,7 @@ int main() {
     assert(squeeze.ghostFrequency("x") == 1);            // x 是最久未用的，快照为淘汰时刻的频次 1
     assert(squeeze.ghostFrequency("y") == 0);            // y 仍是有效数据，没有幽灵记录
     assert(!squeeze.get("x"));                           // 幽灵命中不算数据命中
-    assert(squeeze.ghostSize() == 0);                    // 幽灵记录被"消费"掉
+    assert(squeeze.ghostSize() == 1);                    // 保留幽灵历史，回源 put 才恢复为实际数据
     assert(squeeze.targetL1() == 1);                     // 命中 B1 → p 自适应 +1
 
     // ========== ⑥ 账户域统一登录语义：依据是"同号 / 显式绑定"，不是"同一个人" ==========

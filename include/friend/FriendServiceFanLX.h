@@ -97,11 +97,14 @@ class FriendServiceFanLX {
     // 分别有哪些"人"（按用户 ID 去重）同时是好友。
     std::vector<std::string> crossServiceCommonFriends(const AccountSessionFanLX &first,
                                                        const AccountSessionFanLX &second) const {
+        requireSessionFanLX(first);
+        requireSessionFanLX(second);
         requireSameOwnerFanLX(first, second); // 两个会话必须属于同一个真人
         std::unordered_set<std::string> usersA, usersB;
         for (const auto &key :
              directoryFanLX.peers(resolverFanLX.accountKey(first.service(), first.accountId())))
-            usersA.insert(resolverFanLX.userForAccount(key));
+            if (!resolverFanLX.verifiedTarget(key, first.service(), second.service()).empty())
+                usersA.insert(resolverFanLX.userForAccount(key));
         for (const auto &key :
              directoryFanLX.peers(resolverFanLX.accountKey(second.service(), second.accountId())))
             usersB.insert(resolverFanLX.userForAccount(key));
@@ -131,7 +134,7 @@ class FriendServiceFanLX {
             const auto peerUser = resolverFanLX.userForAccount(peerKey);
             if (peerUser == self)
                 continue;
-            const auto targetPeer = resolverFanLX.accountKeyOfUser(peerUser, target.service());
+            const auto targetPeer = resolverFanLX.verifiedTarget(peerKey, source.service(), target.service());
             if (targetPeer.empty() || directoryFanLX.contains(targetKey, targetPeer) ||
                 !seen.insert(targetPeer).second)
                 continue;

@@ -1,3 +1,0 @@
-"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\fanlx_app.dir/objects.a
-D:\mingw64\bin\ar.exe qc CMakeFiles\fanlx_app.dir/objects.a @CMakeFiles\fanlx_app.dir\objects1.rsp
-D:\mingw64\bin\c++.exe -municode -Wl,--whole-archive CMakeFiles\fanlx_app.dir/objects.a -Wl,--no-whole-archive -o fanlx_app.exe -Wl,--out-implib,libfanlx_app.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\fanlx_app.dir\linkLibs.rsp

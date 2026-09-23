@@ -9,7 +9,7 @@
 | 班级       | 552502 班                                         |
 | 工程文档   | `deliverables/樊陆旭_面向对象课设工程文档.docx`（按课程设计文档要求撰写） |
 | 工具链     | CMake 3.20+ / MinGW（`D:/mingw64`）/ C++17        |
-| 当前构建   | ✅ 编译通过，CTest **4/4** 通过                    |
+| 当前构建   | ✅ 编译通过，CTest **8/8** 通过                    |
 
 ---
 
@@ -20,14 +20,19 @@
 | `include/account/`（10 文件）    | S02       | ✅ 完整实现               | `ServiceTypeFanLX`、`UserProfileFanLX`、`ServiceAccountFanLX`、`AccountManagerFanLX`、`AccountSessionFanLX`、绑定/快照与三类业务异常 |
 | `include/friend/`（5 文件）      | S03       | ✅ 完整实现               | `FriendshipFanLX`、`FriendDirectoryFanLX`、`IdentityResolverFanLX`、`FriendServiceFanLX`、`FriendSnapshotFanLX` |
 | `include/group/`（17 文件）      | S01/S04/S05 | ✅ 完整实现（含无损切换） | `GroupPolicyFanLX` 策略族、`GroupKeyFanLX`、`GroupFanLX`、`GroupMembershipFanLX`、`DiscussionGroupFanLX`、`GroupServiceFanLX` |
-| `include/infra/`（6 文件）       | S01/S07   | ✅ 完整实现               | `LruListFanLX<K,V,H>`（LRU 段底座）、`LruCacheFanLX`（2Q）、`ArcCacheFanLX`（ARC）、`LfuFrequencyFanLX`、`MemoryPoolFanLX`、`UtcClockFanLX` |
+| `include/infra/`（9 文件）       | S01/S07   | ✅ 完整实现               | 2Q/LRU-K、ARC/B1/B2、LFU 衰减、MemoryPool、QueryCache、查询统计 |
 | `include/persistence/`（15 文件）| S06       | ✅ 完整实现               | 仓储接口、JSON 编解码、快照校验、原子写、目录锁、事务协调、恢复与错误分类 |
 | `include/*DomainFanLX.h`（3 个） | —         | ✅ 聚合入口               | 三个域全部类型的兼容 include 入口；每个类仍各自独立成文件 |
-| `src/main.cpp`                  | S06/S09   | 🔶 持久化启动及演示完成   | `--demo` 实际存档/切换/重启验证；支持初始化/确认恢复/保存关闭，数字菜单待 S09 |
+| `src/main.cpp`                  | S06/S09   | ✅ 启动、演示与菜单       | `--demo`、初始化/恢复/保存关闭、默认数字菜单和确定性 D01–D08 演示 |
 | `src/persistence/`（9 文件）     | S06       | ✅ 完整实现               | 上述持久化头文件对应的实现 |
 | `tests/cache_tests.cpp`         | S07       | ✅ 断言测试全通过         | ①LRU ②ARC ③好友域 ④LruList 组件 ⑤ARC 查询接口 ⑥统一登录与会话 |
 | `tests/group_tests.cpp`         | S04/S05   | ✅ 断言测试全通过         | T06–T09 权限/工作流/子群；T10a–f 无损切换 |
 | `tests/persistence_tests.cpp`   | S06       | ✅ 断言测试全通过         | T11/T12、子进程重启与故障注入 |
+| `tests/query_cache_tests.cpp`   | S07       | ✅ 断言测试全通过         | T13 缓存、LFU、ARC、内存池、权限和版本失效 |
+| `tests/console_tests.cpp`       | S09       | ✅ 断言测试全通过         | 菜单输入、返回、EOF、保存和越权场景 |
+| `include/network/`、`src/network/` | S08    | ✅ 已实现                 | Winsock/Socket RAII、长度帧、TCP、有界队列与接收线程 |
+| `include/ui/QQChatSessionFanLX.h` | S08    | ✅ 已接数字菜单           | 主线程聊天鉴权、账号与连续序号检查 |
+| `tests/network_tests.cpp`、`tests/integration_tests.cpp` | S08/S10 | ✅ 断言测试全通过 | T14 双进程中文、协议/资源边界；跨域权限/事务/缓存对照 |
 
 ---
 
@@ -44,13 +49,13 @@
 | S04  | 群基本操作与差异化策略     | ✅ 完成                                                                              |
 | S05  | 动态切换并证明数据无损     | ✅ 完成                                                                |
 | S06  | 持久化事务、启动与恢复     | ✅ 代码已完成；T11/T12 与 S05 存储延迟项通过（见 S06 实施记录） |
-| S07  | 索引、LRU 缓存与性能基准   | ✅ 缓存核心完成；性能基准与接入业务查询待 S06 后统一                  |
-| S08  | QQ 双端 TCP 通信           | ❌ 未开始                                                             |
-| S09  | 数字菜单与确定性功能展示   | 🔶 S06 启动/恢复与真实演示已接入，完整数字菜单待实现                    |
-| S10  | 集成测试与缺陷收敛         | ❌ 未开始                                                             |
+| S07  | 索引、LRU 缓存与性能基准   | ✅ 查询缓存、内存池、T13 与固定种子基准已完成                         |
+| S08  | QQ 双端 TCP 通信           | ✅ 协议、传输、菜单与 T14 双进程测试通过                           |
+| S09  | 数字菜单与确定性功能展示   | ✅ 数字菜单、返回/EOF/严格数字解析、D01–D08 已接入                    |
+| S10  | 集成测试与缺陷收敛         | ✅ 权限矩阵、缓存对照、故障回归与条款追踪完成                                                             |
 | S11  | 正式报告、答辩与发布冻结   | ❌ 未开始                                                             |
 
-> **当前主线**：S06 已完成，进入 S07 业务缓存接入/实测与 S09 菜单；S08 可独立推进。S05 重启保持模式及写失败不变已在 T11/T12 补验。
+> **当前主线**：S06、S07、S09 已完成可验收实现；S08 TCP 与 S10 集成收敛已实现；下一步为 S11 正式报告及发布冻结。S05 重启保持模式及写失败不变已在 T11/T12 补验。
 
 ---
 
@@ -611,7 +616,7 @@ QQ 号 / 微信号。`IdentityResolverFanLX` 区分前端口径（`accountKey(se
 `Binding(Wechat -> QQ 20260001): bound=true` 与
 `Unified login(QQ 20260001): QQ=true Weibo(same-id)=true Wechat(bound)=true`。
 
-### 本轮发现但未实施（需产品决策，不得计作已完成）
+### 2026-09-14 历史待办（第 1、2 项已于 S07/S09 完成）
 
 1. **跨服务匹配的依据与计划不一致**：计划要求 `经共享ID或有效绑定映射到目标服务`，
    而当前 `recommendFriends` / `crossServiceCommonFriends` 是用内部 `userId` 把对端的
@@ -636,45 +641,75 @@ P07.1—P07.7 已实现。当前代码采用 C++17、MinGW GCC 15.1.0，实际�
 - DataDirectoryLockFanLX 持有 OS 独占句柄，进程崩溃后自动释放；锁文件残留不妨碍重启。宽字符路径与 wmain 修复中文路径子进程参数问题。
 - Empty、Loaded、RecoveredReadOnly、UnsupportedSchema、UncommittedOnly、Failed 状态明确；恢复需显式确认，保留损坏主文件副本及恢复记录，不以坏主覆盖有效备份。提交结果不确定时阻断写入。
 - PersistenceApplicationFanLX 提供注册/开通/绑定/资料/好友/群/角色/模式/工作流/子群/解散等事务入口，外部仅获得 const 在线状态。注册首个账号为用户选定的初始服务，其余需显式开通；会话只在内存保留。
-- main 已接真实启动、初始化、恢复确认和 saveAndClose；--demo 使用唯一临时目录完成存档、切换、关闭重开和全字段比较，不改默认 data。数字菜单仍属 S09。
+- main 已接真实启动、初始化、恢复确认和 saveAndClose；--demo 使用唯一临时目录完成存档、切换、关闭重开和全字段比较，不改默认 data。**历史基线记录**：本段形成于 S06，当时数字菜单仍属 S09；该阶段已在 2026-09-22 完成。
 - 账户、会话、好友、群、策略类型拆为独立头文件，原 AccountDomain/FriendDomain/GroupDomain 保留兼容 include；新增领域代码不依赖 JSON 或 Win32。原 tests/cache_tests.cpp 和 tests/group_tests.cpp 保持其已有场景。
 
 ### 落地细节与兼容性决定
 
 - 未新增 clone 纯虚方法；候选策略按受支持 mode 工厂重建。内部恢复只创建候选对象，不提供在线可写 restore 入口。
 - 归档群保存完整历史片段；工作流按参与者保存最近一次状态，再次申请替换已结束的那次记录，不声称具备无限历史日志。子群清空时保留归档对象，有权限者在 QQ 下重新扩员可激活，兼容 T10d 的回切恢复测试；微信仍禁止管理性扩员。
-- S07 尚无业务查询缓存接入在线状态；恢复时重新创建应用领域状态，未序列化缓存和会话。局部版本已实现，缓存接入后仍需 T13 检查。
+- **历史基线记录**：S06 阶段尚无业务查询缓存接入在线状态；后续 S07 已接入 ARC/内存池查询缓存并通过 T13。恢复时仍重新创建应用领域状态，缓存和会话不写入快照。
 - 临时文件名采用 pid/tick/sequence 唯一后缀，不把临时文件名中的数字当提交代数；权威代数只读取主/备快照内容。
 - 高频文件替换实测曾出现 Win32=5；文件适配器增加最多 190 ms 的有界占用重试，只读目标立即失败，未清除用户文件权限。
 - 恢复发布后若重新校验/内存重建失败，关闭应用仓储，要求重启重新加载；不允许旧内存继续覆盖存档。恢复记录的 oldGeneration 仅在原文件可可信解析时填写，否则为 null。
 
 ### 验证记录
 
-- 默认 build、干净 .artifacts/build-debug、干净 .artifacts/build-release：CMake 构建通过，CTest 4/4（smoke、cache_behavior、group_behavior、persistence_behavior）通过。Release 显式保留断言，避免假通过。
+- **历史基线记录**：S06 当时默认 build、Debug、Release 均为 CTest 4/4；S07/S09 完成后测试扩展为 6 项，最新结果见文末 S10 收敛日志。
 - 持久化库、新入口与测试采用 -Wall -Wextra -Wpedantic -Werror。核心源文件 clangd 检查 0 errors（--tweaks=none 关闭 assert 宏重构自测）。
 - T11：账号/绑定/中文备注/同号群/子群/角色/时间/序号/工作流全字段 round-trip；新进程重启清登录态；对象地址不变；全部写用例与无变化不增代。
 - T12：七个提交前位置注入异常；六个位置真实终止辅助进程；损坏/双损坏/未知版本/孤立 tmp/缺主/代数矛盾/恢复失败/外部改写/提交结果不确定；独占锁释放与只读文件访问拒绝；非法 JSON/引用/角色/序号及过期工作流。
 - S05 延迟项：模式切换保存后重启仍为新模式；写失败时策略对象地址、成员快照、局部版本和旧主文件不变；原 T06—T10 无回归。
 - 示例目录 .artifacts/S06/sample-data 已通过 --init-demo 与第二次启动实测；输出 users=12、generation=2。构建与测试证据详见 docs/persistence-validation.md。
 
-未进行真实硬件断电或真实磁盘耗尽试验；写入/flush 失败通过注入验证，只读文件拒绝和进程崩溃为真实 OS 实测。不能将本阶段结论写成任意硬件绝对零丢失。完整数字菜单、TCP、查询缓存接入、性能基准及最终报告更新仍属于后续阶段。
+未进行真实硬件断电或真实磁盘耗尽试验；写入/flush 失败通过注入验证，只读文件拒绝和进程崩溃为真实 OS 实测。不能将本阶段结论写成任意硬件绝对零丢失。S07 查询缓存、S09 数字菜单已经接入；TCP 选做与最终报告冻结仍属后续阶段。
+
+---
+
+## 2026-09-22 S07 实施中日志
+
+本轮继续沿用已分层的 include/account、friend、group、infra、persistence 目录，不恢复旧扁平布局。
+
+- 已修正 2Q 为两条 std::list 与唯一 unordered_map，Entry 保留 freq/level；两区预算独立、晋升使用 splice。
+- 已连接复合 ARC 的比例反馈、最近 K 次历史、L2 LFU 淘汰及平均阈值/周期衰减，LFU 不再重复记账；T13 已验收。
+- 内存池修复过对齐、BlockSize=1、构造失败槽位回收及禁止浅复制，增加实测计数。
+- 在线好友账号/群成员查询已接 ARC 与对象池，局部版本键失效，权限必须先于命中检查；缓存异常只降级回源。
+- T13、固定种子基准、数字菜单与菜单回归均已完成；结果见 docs/cache-validation.md，未实测硬件断电和磁盘写满仍不作承诺。
+
+---
+
+### 2026-09-22 S07/S09 完成日志
+
+- T13 和 `console_tests` 在默认/Release 中均通过，CTest 从 4 项扩展为 6 项。
+- `cache_benchmark` 产生 `.artifacts/S07/cache-benchmark.csv`，固定种子 2026、1012 用户、112 群、3 类负载、1000 查询×5 轮×缓存开关；各开关结果逐项相等。
+- `src/ui/ConsoleAppFanLX.cpp` 接入严格数字解析、EOF/返回、登录、服务/好友/群操作、恢复和保存退出；`--demo` 补齐 D01–D08 实际演示。
+- 复核并收紧推荐规则：跨服务映射必须是 sharedId 同号或显式 binding；仅同一 userId 不再足够。
+- 报告 `deliverables/樊陆旭_面向对象课设工程文档.docx` 已更新学期、菜单、持久化、缓存和基准状态；Word 导出 17 页，已检查首尾页及新增实现页布局。
+- `.artifacts/S07/ctest-default.log`、`ctest-release.log`、`cache-benchmark.csv`、`final-manifest.txt` 与 clangd 日志保存了本轮证据。
 
 ---
 
 ## 后续整体路线
 
-S05/S06 内存与持久化无损已完成 → S07 业务缓存与实测 → S09 完整菜单/确定性演示 → S10 集成收敛 → S11 正式报告/发布。S08 在 S06 后可独立推进并汇入 S09/S10；这是依赖关系，不代表已启动并行代理。
+### 2026-09-23 S08/S10 实施中日志
+
+- 新增 network 独立模块：Winsock/套接字 RAII、IPv4 监听/连接、4 字节大端长度帧、严格 JSON/UTF-8 校验、128 条有界队列和接收线程。
+- 新增 QQChatSessionFanLX 主线程门面，主菜单第 6 项进入 QQ 双端聊天；发送/读取前检查当前 QQ 会话和好友资格，校验接收方、发送方及连续序号。连接/监听有超时，0/EOF/异常回收线程与句柄。
+- T14 已编写拆包、粘包、非法帧、半帧断连/超时、队列满、端口占用、两个进程 100 条双向中文消息、越权拒绝等测试；尚未以本段记录宣告全部通过。
+- 网络线程不访问领域状态；聊天不进入 state.json，账号仍为教学模拟身份，未实现远端加密认证或离线投递。
+
+S05—S10 已完成当前约定范围内的实现与回归 → S11 正式报告/发布。S08 通过独立有界队列向主线程投递消息，不修改持久化快照。
 
 | 阶段 | 待完成工作 | 验收出口 |
 | --- | --- | --- |
 | S06（已完成） | 保持回归，后续新增业务须走统一事务 | T11/T12、完整事务与恢复 |
-| S07 后续 | 无缓存基线；局部版本、权限先验、实际 ARC/内存池接入；复核用户单路由/预算/LFU 要求与当前实现 | T13 开关结果一致；固定种子 2026、至少 1000 查询×5 轮，真实性能/内存/写延迟 |
-| S08 | Winsock RAII、有界队列、长度帧，网络线程仅提交事件 | T14 中文双端、100 条消息、拆包/断连；不同 data 目录 |
-| S09 | 仓储启动/恢复确认/退出、数字菜单、getline 校验、0 返回、隔离 demo | T15 非法输入/EOF、D01–D08 真实结果 |
-| S10 | R/O/E 矩阵、身份/好友/群/存储/缓存链复核及缺陷修复 | 故障回归、干净目录离线验证；只报告实际可用的 MinGW 检查结果 |
+| S07（已完成） | 业务查询 ARC/内存池接入、版本失效、LFU/2Q/ARC T13、固定种子基准 | T13 开关结果一致；1000 查询×5 轮、缓存/回源与写延迟 CSV |
+| S08（已完成） | Winsock RAII、有界队列、长度帧，网络线程仅提交事件 | T14 中文双端、100 条消息、拆包/断连；不同 data 目录 |
+| S09（已完成） | 仓储启动/恢复确认/退出、数字菜单、getline 校验、0 返回、隔离 demo | T15 非法输入/EOF、D01–D08 真实结果 |
+| S10（已完成） | R/O/E 矩阵、身份/好友/群/存储/缓存链复核及缺陷修复 | 故障回归、干净目录离线验证；只报告实际可用的 MinGW 检查结果 |
 | S11 | 与代码一致的 UML、测试/性能/故障记录、约 5 页报告、源码与依赖许可 | 樊陆旭、552502班、2026-2027学年第一学期封面；任务书逐项验收与发布 |
 
-下一项为 S07 业务缓存与性能基准；如优先展示，则进入 S09 数字菜单。S06 已完成重启和故障验证，但未实施真实硬件断电/磁盘写满试验。S07 原始单路由/预算/LFU 要求、内存池实际接入和性能仍须复核，不能从已有单测推断性能结论。
+S07 基准结果和菜单验收记录见 docs/cache-validation.md；缓存性能仅代表本机单线程内存领域测量，不能外推硬件、线程或数据库吞吐。S08 TCP 已实现并通过本机双进程测试；S11 最终报告冻结仍未完成。S06 未实施真实硬件断电/磁盘写满试验。
 
 ---
 
@@ -698,3 +733,41 @@ build\cache_tests.exe
 build\group_tests.exe
 build\persistence_tests.exe
 ```
+
+## 2026-09-23 S10 首轮集成收敛记录（历史基线）
+
+- 修正 S06 历史状态说明，保留当时 4 项测试的真实记录；当前为 6 项测试。
+- 补齐 README 的 UI、基准及测试目录；新增 scripts/verify-release.ps1，可从任意目录执行，使用唯一构建目录、逐阶段检查退出码并保存日志与 SHA-256 清单，不清理用户数据或旧证据。
+- 独立目录 .artifacts/build-s10-0923 完成 MinGW GCC 15.1.0 / C++17 Release 全量构建，CTest 6/6 通过（2.05 秒），包含实际隔离演示、故障恢复、查询缓存和控制台回归。
+- 本轮未修改业务算法；S10 仅完成可重复构建与已有集成回归，不能据此宣称 R/O/E 全矩阵追踪已完成。
+- 后续：补齐任务书条款到测试的追踪矩阵；按选做方案实现 S08 TCP 并增加 T14；最后更新 UML 和最终报告，执行 S11 发布冻结。原始任务书保持不变。
+
+
+## 2026-09-23 S08 与 S10 完成日志
+
+- S08 新增 7 个独立网络类与 QQChatSessionFanLX 应用门面，菜单 6 提供监听、连接、发送、读取和断开。严格长度/UTF-8/协议字段校验，短写/拆包处理、有界队列、半帧总超时、关闭唤醒接收并 join 均已实现。
+- T14 在真实双进程、独立 A/B 数据目录、动态回环端口下逐条比对 100 条中文请求与 100 条应答；两端聊天前后领域快照相等。另测非法帧/重复属性/超限、分片合并、断连、队列满、监听超时、端口占用、连接拒绝、账号/序号和当前会话权限。
+- S10 新增 integration_behavior：缓存开启/关闭运行相同轨迹，查询与重启全字段快照相等；拒绝操作/写失败同时校验内存、文件、代数/局部版本与群/子群稳定地址。补齐 docs/integration-validation.md 任务书章节追踪、R/O/E 分类和事务权限矩阵。
+- tests/fixtures/ThrowingGroupPolicyFanLX.h 保留原测试语义，将测试替身也拆成独立类文件。新网络/集成源码已 clang-format 格式化并保留中文注释。
+- 默认 build：CTest 8/8（11.26 秒）；唯一 Release 目录 .artifacts/verify-759cc5d84839455ebaeaaa013d52fe88/build：从源码配置/构建成功，CTest 8/8（9.25 秒）。新增网络库、门面和两项测试以 -Wall -Wextra -Wpedantic -Werror 编译，Release 断言有效。7 个相关源文件 clangd 检查均为 0 errors。
+- docs/network-validation.md 已记录双端菜单步骤、协议、资源上限和 T14 实测；README、architecture.md、data-format.md 和 DOCX 工程文档同步更新。工程文档是详细工程记录，约 5 页正式提交版仍属 S11；本轮未修改原始任务书。
+- 证据：.artifacts/S08-S10/ctest-default.log、ctest-release.log、*.clangd.log、final-manifest.sha256。工程报告当前 15 页，已逐页检查 Word 导出与 Poppler 页面图像；原文档渲染脚本因无 LibreOffice 失败后采用此路径。该详细工程记录不冒充 S11 约 5 页正式提交版。
+- 边界：当前只实测本机回环双进程；未实现 TLS/远端身份认证/离线投递/聊天历史/跨端领域同步。真实断电、磁盘耗尽和跨机器环境未实测。S11 报告精简、答辩及发布冻结未完成。
+
+
+## 2026-09-23 中心转发 IM 增量改造
+
+按只修改现有代码要求扩展 TcpPeer/TcpListener/MessageCodec 与现有启动、菜单，不重写领域层。原有 Winsock2 和 ws2_32 保留；配置服务端后登录即建立长连接，菜单返回持续收发。新增单聊/群聊中心转发、离线ACK、群会话增量游标、仅好友可见的上下线/查询、持久化outbox/inbox和断线自动重连。认证使用服务端令牌，账号/好友/群来自服务端领域数据。
+
+Debug全量9项CTest通过；IM用例涵盖连接复用、在线/离线投递、服务端及客户端生命周期重建、双ACK丢失窗口、磁盘只读失败、幂等冲突、身份伪造和群权限。当前为单服务器、单在线会话、受控网络方案，无TLS或多设备漫游；未实测真实断电。详见network-validation.md。此前S08的P2P限制是历史记录，不再代表当前菜单功能。
+
+
+## 2026-09-23 仓库清理与帮助文件
+
+删除与工程无关的临时产物：`.artifacts/`（旧构建目录 im-build/build-debug/build-release/build-s10-0923、渲染 PNG/PDF、clangd 日志、一次性脚本与 format_tool，约 993 MB）、`build/`（构建输出，约 183 MB）、`data-chat-a|b`、`data-im-a|b`、`data-im-server`（运行时演示库，可用 `--init-demo` 重建）、`.cache/`（clangd 索引）、空目录 `fixtures/` 与 `docs/prompts/`（过程提示词）。保留源码、测试、文档、第三方头文件、课程任务书与 deliverables 报告。README 与各验收记录中对 `.artifacts/...` 的引用已加说明，命令改用任意构建目录即可复现。
+
+新增 `.gitignore`（忽略 `build/`、`build-*/`、`.artifacts/`、`data-*/`、编译产物与日志），构建产物自本次起不再入库；此前误入库的构建产物已从索引移除，删除的受版本控制文件仍可经 git 历史取回。
+
+清理后在仓库外全新目录验证：MinGW GCC 15.1.0 配置与构建成功，CTest 9/9 通过（18.34 秒），`fanlx_app --demo` 退出码 0；在 `PATH` 不含 MinGW 的环境下仍可直接运行（`-static` 已消除 0xC0000139）。
+
+新增根目录 HELP.md：环境要求、构建与干净重建、命令行参数、全部菜单速查、IM 三终端联调、测试与基准、数据与锁、FAQ 及文档索引。

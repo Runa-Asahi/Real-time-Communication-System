@@ -2,6 +2,7 @@
 #include "friend/FriendServiceFanLX.h"
 #include "persistence/PersistenceApplicationFanLX.h"
 #include "persistence/PersistenceErrorFanLX.h"
+#include "friend/IdentityResolverFanLX.h"
 
 PersistenceApplicationFanLX::PersistenceApplicationFanLX(const std::filesystem::path &directory,
                                                          std::function<std::string()> clock,
@@ -30,6 +31,7 @@ void PersistenceApplicationFanLX::confirmRecovery() {
             throw PersistenceErrorFanLX(PersistenceErrorCodeFanLX::RecoveryRequired,
                                         "恢复后未得到有效主快照");
         stateFanLX = SnapshotCodecFanLX::build(loadFanLX.snapshot);
+        queryCacheFanLX.clear();
     } catch (...) {
         // 磁盘恢复后，领域重建仍可能因分配失败而中止。关闭仓储，禁止旧内存覆盖新主文件；
         // 调用方重新启动即可再次加载已恢复快照。提交前的恢复错误仍可原地重试。
@@ -272,4 +274,110 @@ void PersistenceApplicationFanLX::renameGroup(AccountRefFanLX actor, GroupKeyFan
             throw std::runtime_error("需要群主权限");
         s.groups.get(key).rename(name);
     });
+}
+
+namespace {
+std::uint64_t queryVersionFanLX(const PlatformStateFanLX &state, const std::string &key) {
+    auto found = state.versions.find(key);
+    return found == state.versions.end() ? 0 : found->second;
+}
+std::string accountJsonFanLX(const AccountRefFanLX &account) {
+    return nlohmann::json{{"service", serviceNameFanLX(account.service)}, {"accountId", account.accountId}}.dump();
+}
+}
+std::vector<std::string> PersistenceApplicationFanLX::queryFriendAccounts(AccountRefFanLX actor) {
+    requireReady();
+    session(stateFanLX, actor); // 缓存命中也必须验证当前会话。
+    IdentityResolverFanLX resolver(stateFanLX.accounts);
+    const auto accountKey = resolver.accountKey(actor.service, actor.accountId);
+    const auto ref = accountJsonFanLX(actor);
+    const auto key = nlohmann::json{"friends", ref,
+        queryVersionFanLX(stateFanLX, "friends/" + ref)}.dump();
+    if (auto cached = queryCacheFanLX.get(key)) return *cached;
+    std::vector<std::string> result;
+    for (const auto &peer : stateFanLX.friends.peers(accountKey))
+        result.push_back(stateFanLX.accounts.account(resolver.userForAccount(peer), actor.service).accountId);
+    std::sort(result.begin(), result.end());
+    queryCacheFanLX.put(key, result);
+    return result;
+}
+std::vector<std::string> PersistenceApplicationFanLX::queryGroupMembers(AccountRefFanLX actor,
+                                                                      const GroupKeyFanLX &key) {
+    requireReady();
+    const auto user = actorUser(stateFanLX, actor, key);
+    const auto &group = stateFanLX.groups.get(key);
+    if (!group.hasMember(user)) throw std::runtime_error("只有群成员可以查询群成员");
+    // 权限直接查询在线状态，必须位于缓存 get 之前，防止先前成员身份命中的越权泄露。
+    const auto groupRef = nlohmann::json{{"namespaceMode", key.mode == GroupModeFanLX::QQ ? "QQ" : "Wechat"},
+                                       {"id", key.id}}.dump();
+    const auto prefix = "group/" + groupRef;
+    const auto cacheKey = nlohmann::json{"group-members", groupRef,
+        queryVersionFanLX(stateFanLX, prefix + "/members"),
+        queryVersionFanLX(stateFanLX, prefix + "/deleted")}.dump();
+    if (auto cached = queryCacheFanLX.get(cacheKey)) return *cached;
+    std::vector<std::string> result;
+    for (const auto &member : group.members())
+        result.push_back(stateFanLX.accounts.account(member, actor.service).accountId);
+    std::sort(result.begin(), result.end());
+    queryCacheFanLX.put(cacheKey, result);
+    return result;
+}
+
+void PersistenceApplicationFanLX::confirmLogin(AccountRefFanLX actor, AccountRefFanLX target) {
+    requireReady();
+    session(stateFanLX, actor);
+    const auto &from = stateFanLX.accounts.accountByAccountId(actor.service, actor.accountId);
+    const auto &to = stateFanLX.accounts.accountByAccountId(target.service, target.accountId);
+    if (from.userId != to.userId ||
+        (!(from.sharedId && to.sharedId && from.accountId == to.accountId) &&
+         !stateFanLX.accounts.isBound(actor.service, actor.accountId, target.service, target.accountId)))
+        throw std::runtime_error("逐项确认需要本人的共享号码或已验证绑定");
+    stateFanLX.accounts.login(target.service, target.accountId, false);
+}
+std::vector<std::string> PersistenceApplicationFanLX::queryCommonFriends(AccountRefFanLX actor,
+                                                                         AccountRefFanLX peer) {
+    requireReady();
+    auto self = session(stateFanLX, actor);
+    if (actor.service != peer.service) throw std::runtime_error("共同好友需在同一平台查询");
+    stateFanLX.accounts.accountByAccountId(peer.service, peer.accountId);
+    const auto a = accountJsonFanLX(actor), b = accountJsonFanLX(peer);
+    const auto key = nlohmann::json{"common", a, b, queryVersionFanLX(stateFanLX, "friends/" + a),
+                                    queryVersionFanLX(stateFanLX, "friends/" + b)}.dump();
+    if (auto cached = queryCacheFanLX.get(key)) return *cached;
+    FriendServiceFanLX friends(stateFanLX.friends, stateFanLX.accounts);
+    IdentityResolverFanLX resolver(stateFanLX.accounts);
+    std::vector<std::string> result;
+    for (const auto &entry : friends.commonFriends(self, peer.service, peer.accountId))
+        result.push_back(stateFanLX.accounts.account(resolver.userForAccount(entry), actor.service).accountId);
+    std::sort(result.begin(), result.end());
+    queryCacheFanLX.put(key, result);
+    return result;
+}
+std::vector<std::string> PersistenceApplicationFanLX::queryCrossService(AccountRefFanLX source,
+                                               AccountRefFanLX target, bool recommendations) {
+    requireReady();
+    auto from = session(stateFanLX, source), to = session(stateFanLX, target);
+    if (source.service == target.service ||
+        stateFanLX.accounts.accountByAccountId(source.service, source.accountId).userId !=
+        stateFanLX.accounts.accountByAccountId(target.service, target.accountId).userId)
+        throw std::runtime_error("跨服务查询需要本人两个不同平台的有效会话");
+    const auto a = accountJsonFanLX(source), b = accountJsonFanLX(target);
+    const auto key = nlohmann::json{"cross", recommendations, a, b,
+        queryVersionFanLX(stateFanLX, "friends/" + a), queryVersionFanLX(stateFanLX, "friends/" + b),
+        queryVersionFanLX(stateFanLX, "accounts"), queryVersionFanLX(stateFanLX, "subscriptions"),
+        queryVersionFanLX(stateFanLX, "bindings")}.dump();
+    if (auto cached = queryCacheFanLX.get(key)) return *cached;
+    FriendServiceFanLX friends(stateFanLX.friends, stateFanLX.accounts);
+    IdentityResolverFanLX resolver(stateFanLX.accounts);
+    std::vector<std::string> result;
+    if (recommendations) {
+        for (const auto &entry : friends.recommendFriends(from, to))
+            result.push_back(stateFanLX.accounts.account(resolver.userForAccount(entry), target.service).accountId);
+    } else {
+        for (const auto &user : friends.crossServiceCommonFriends(from, to))
+            result.push_back(stateFanLX.accounts.account(user, target.service).accountId);
+    }
+    std::sort(result.begin(), result.end());
+    queryCacheFanLX.put(key, result);
+    return result;
 }

@@ -1,3 +1,5 @@
+> 2026-09-23 IM增量更新：原S08点对点菜单已改为登录长连接+中心转发；新增 ImClientFanLX/ImServerFanLX、持久化 outbox/inbox/ACK 与好友在线状态。下面旧S08章节保留历史背景，当前网络设计以 [network-validation.md](network-validation.md) 为准。
+
 # 架构说明 — 樊陆旭模拟即时通讯系统
 
 ## 分层概览
@@ -5,7 +7,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Presentation / Entry（入口层）                          │
-│  main.cpp · ConsoleAppFanLX（待实现）                   │
+│  main.cpp · ConsoleAppFanLX（已实现）                   │
 ├─────────────────────────────────────────────────────────┤
 │  Application / Service（业务服务层）                     │
 │  AccountManagerFanLX · FriendServiceFanLX               │
@@ -237,20 +239,28 @@ MemoryPoolFanLX<T, BlockSize=256>
     ├── freeListFanLX : NodeFanLX*   // 空闲链表头
     └── blocksFanLX   : NodeFanLX*   // 已申请大块内存链表
     方法：create<Args...>（placement new）· destroy（手动析构 + 归还链表）
+
+QueryCacheFanLX
+    ├── ArcCacheFanLX<std::string, shared_ptr<const QueryResultFanLX>>
+    ├── MemoryPoolFanLX<QueryResultFanLX, 64>
+    └── 局部版本键：好友、共同好友、跨服务推荐、群成员
+
+查询缓存只保存值副本。应用先执行会话/群成员权限检查，再访问缓存；成功写事务只推进受影响的局部版本，
+无关查询仍可命中，恢复或重新加载时缓存为空。缓存分配异常会清理非权威缓存并回源，不能改变业务事务结果。
 ```
 
 ---
 
-## 待实现（S05–S09）
+## 后续模块实施对照（更新于 2026-09-23）
 
 | 类名                          | 阶段 | 说明                                                      |
 | ----------------------------- | ---- | --------------------------------------------------------- |
-| `JsonFileRepositoryFanLX`     | S06  | JSON 快照 + 写事务 + 重启恢复                              |
-| `ConsoleAppFanLX`             | S09  | 数字菜单交互界面（`getline` + 严格数値解析）               |
-| `DemoRunnerFanLX`             | S09  | `--demo` 隔离演示（独立数据目录）                          |
-| `SocketRuntimeFanLX`          | S08  | Winsock 生命周期管理                                       |
-| `TcpPeerFanLX`                | S08  | 双端点对点连接                                             |
-| `MessageCodecFanLX`           | S08  | 长度前缀协议编解码                                         |
+| `JsonFileRepositoryFanLX`     | S06  | 已实现：JSON 快照 + 写事务 + 重启恢复                              |
+| `ConsoleAppFanLX`             | S09  | 已实现：数字菜单交互界面（`getline` + 严格数値解析）               |
+| `demoFanLX`（函数）             | S09  | `--demo` 隔离演示（独立数据目录）                          |
+| `SocketRuntimeFanLX`          | S08  | 已实现：Winsock 生命周期管理                                       |
+| `TcpPeerFanLX`                | S08  | 已实现：双端点对点连接                                             |
+| `MessageCodecFanLX`           | S08  | 已实现：长度前缀协议编解码                                         |
 
 ---
 
@@ -282,3 +292,24 @@ classDiagram
 ```
 
 领域与 JSON/Win32 分离。候选状态先验证并写盘，文件提交后执行预分配的内部 swap；群、子群与管理器外壳稳定。应用外部只能查询 const 在线状态；所有持久化修改通过应用门面，菜单不得持有候选引用。细节见 data-format.md。
+
+## S08 网络与主线程边界（2026-09-23）
+
+```mermaid
+classDiagram
+  ConsoleAppFanLX --> QQChatSessionFanLX
+  QQChatSessionFanLX --> PersistenceApplicationFanLX : 主线程鉴权
+  QQChatSessionFanLX *-- TcpPeerFanLX
+  TcpListenerFanLX --> TcpPeerFanLX : 接受连接
+  TcpListenerFanLX *-- SocketRuntimeFanLX
+  TcpListenerFanLX *-- SocketHandleFanLX
+  TcpPeerFanLX *-- SocketRuntimeFanLX
+  TcpPeerFanLX *-- SocketHandleFanLX
+  TcpPeerFanLX *-- BoundedQueueFanLX
+  TcpPeerFanLX --> MessageCodecFanLX
+  MessageCodecFanLX --> ChatMessageFanLX
+```
+
+后台接收线程只能把值消息送入有界队列；UI 主线程读取并检查账号、序号与当前资格。
+网络错误关闭连接并返回菜单，不执行领域写事务。聊天门面没有网络线程对应用状态的回调，
+所以原有单线程事务、缓存与存储不变量保持成立。协议与资源上限见 network-validation.md。

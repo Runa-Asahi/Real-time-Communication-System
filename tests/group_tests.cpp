@@ -3,6 +3,7 @@
 #undef NDEBUG
 #endif
 #include "GroupDomainFanLX.h"
+#include "fixtures/ThrowingGroupPolicyFanLX.h"
 #include <cassert>
 
 template<class ExceptionFanLX = std::runtime_error, class ActionFanLX>
@@ -12,16 +13,6 @@ void expectExceptionFanLX(ActionFanLX action) {
     catch (const ExceptionFanLX&) { caught = true; }
     assert(caught);
 }
-
-// 仅供 T10e 注入构造失败；生产代码不需要显式回滚分支。
-class ThrowingGroupPolicyFanLX final : public GroupPolicyFanLX {
-public:
-    ThrowingGroupPolicyFanLX() { throw std::runtime_error("模拟策略构造失败"); }
-    bool canCreateDiscussion() const override { return true; }
-    std::string name() const override { return "Throwing"; }
-    GroupModeFanLX mode() const override { return GroupModeFanLX::QQ; }
-    bool canAssignAdmin() const override { return true; }
-};
 
 int main() {
     GroupServiceFanLX service;

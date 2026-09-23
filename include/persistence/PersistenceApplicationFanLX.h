@@ -2,12 +2,14 @@
 #include "persistence/JsonFileRepositoryFanLX.h"
 #include "persistence/SnapshotCodecFanLX.h"
 #include "persistence/TransactionCoordinatorFanLX.h"
+#include "infra/QueryCacheFanLX.h"
 
 // 单线程应用门面。在线聚合体只读，所有持久化写入都在候选事务中执行。
 class PersistenceApplicationFanLX {
     JsonFileRepositoryFanLX repositoryFanLX;
     PlatformStateFanLX stateFanLX;
     TransactionCoordinatorFanLX transactionsFanLX;
+    QueryCacheFanLX queryCacheFanLX;
     LoadResultFanLX loadFanLX;
     bool closedFanLX = false;
     void requireReady() const;
@@ -28,6 +30,15 @@ class PersistenceApplicationFanLX {
     PlatformSnapshotFanLX snapshot() const {
         return SnapshotCodecFanLX::capture(stateFanLX);
     }
+    // 查询只返回值副本；缓存不保存在线领域对象或会话。
+    std::vector<std::string> queryFriendAccounts(AccountRefFanLX actor);
+    std::vector<std::string> queryGroupMembers(AccountRefFanLX actor, const GroupKeyFanLX &key);
+    std::vector<std::string> queryCommonFriends(AccountRefFanLX actor, AccountRefFanLX peer);
+    std::vector<std::string> queryCrossService(AccountRefFanLX source, AccountRefFanLX target,
+                                               bool recommendations = true);
+    void confirmLogin(AccountRefFanLX actor, AccountRefFanLX target);
+    QueryCacheMetricsFanLX queryCacheMetrics() const noexcept { return queryCacheFanLX.metrics(); }
+    void setQueryCacheEnabled(bool enabled) noexcept { queryCacheFanLX.setEnabled(enabled); }
     void initialize();
     void confirmRecovery();
     void saveAndClose();

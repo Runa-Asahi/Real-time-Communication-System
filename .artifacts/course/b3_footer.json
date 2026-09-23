@@ -1,6 +1,0 @@
-[
-  {"command":"add","parent":"/","type":"footer","props":{"type":"default","text":"第 ","align":"center","size":"9pt"}},
-  {"command":"add","parent":"/footer[1]/p[1]","type":"field","props":{"fieldType":"page"}},
-  {"command":"add","parent":"/footer[1]/p[1]","type":"run","props":{"text":" 页"}},
-  {"command":"set","path":"/settings","props":{"updateFields":"true"}}
-]

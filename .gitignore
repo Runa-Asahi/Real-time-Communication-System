@@ -1,0 +1,37 @@
+# ---- 构建输出（CMake 生成，可随时重建）----
+/build/
+/build-*/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+
+# ---- 临时工作产物（渲染图、日志、一次性脚本）----
+/.artifacts/
+*.clangd.log
+*.log
+
+# ---- 编辑器 / 语言服务器缓存 ----
+/.cache/
+/.vscode/
+*.log.clangd
+
+# ---- 运行时数据目录（由 --init-demo 或程序首次启动生成）----
+/data-*/
+/data/*.json
+/data/*.json.prev
+/data/*.lock
+
+# ---- 编译与本机产物 ----
+*.o
+*.obj
+*.a
+*.lib
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.stackdump
