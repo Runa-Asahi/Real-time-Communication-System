@@ -3,8 +3,6 @@
 #include "gui/FriendChromeFanLX.h"
 #include "gui/PageKitFanLX.h"
 #include <QComboBox>
-#include <QGridLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -159,6 +157,7 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
             header->trailingLayout()->addWidget(requestsRefreshButtonFanLX);
     }
     installFriendHeaderFanLX(kQueryPage, QStringLiteral("共同好友"));
+    installFriendHeaderFanLX(kRemarkPage, QStringLiteral("备注与标签"));
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(6, 6, 6, 6);
@@ -633,32 +632,27 @@ void FriendPageFanLX::refreshCandidatesFanLX() {
 }
 
 QWidget *FriendPageFanLX::buildRemarkBodyFanLX() {
-    auto *body = new QWidget();
-    remarkPeerEditFanLX = new QLineEdit(body);
+    QVBoxLayout *layout = nullptr;
+    auto *page = friendSubpageShellFanLX(&layout, 560);
+    auto *card = new FriendCardFanLX(QStringLiteral("备注与标签"), page);
+    remarkPeerEditFanLX = new QLineEdit(card);
     remarkPeerEditFanLX->setPlaceholderText(QStringLiteral("好友号码"));
-    remarkEditFanLX = new QLineEdit(body);
+    remarkEditFanLX = new QLineEdit(card);
     remarkEditFanLX->setPlaceholderText(QStringLiteral("备注名"));
-    tagEditFanLX = new QLineEdit(body);
+    tagEditFanLX = new QLineEdit(card);
     tagEditFanLX->setPlaceholderText(QStringLiteral("分组标签，如 同学"));
-    remarkButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("保存备注/标签"), body);
-
-    auto *form = new QGridLayout();
-    form->addWidget(new QLabel(QStringLiteral("好友"), body), 0, 0);
-    form->addWidget(remarkPeerEditFanLX, 0, 1);
-    form->addWidget(new QLabel(QStringLiteral("备注"), body), 1, 0);
-    form->addWidget(remarkEditFanLX, 1, 1);
-    form->addWidget(new QLabel(QStringLiteral("标签"), body), 2, 0);
-    form->addWidget(tagEditFanLX, 2, 1);
-    auto *layout = new QVBoxLayout(body);
-    layout->addLayout(form);
-    layout->addWidget(remarkButtonFanLX, 0, Qt::AlignRight);
-    layout->addStretch(1);
+    remarkButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("保存备注/标签"), card);
+    card->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("好友"), remarkPeerEditFanLX, card));
+    card->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("备注"), remarkEditFanLX, card));
+    card->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("标签"), tagEditFanLX, card));
+    card->bodyLayout()->addWidget(remarkButtonFanLX, 0, Qt::AlignLeft);
+    layout->addWidget(card);
 
     connect(remarkButtonFanLX, &QPushButton::clicked, this, [this] {
         controllerFanLX->updateFriendRemark(remarkPeerEditFanLX->text().trimmed(),
                                             remarkEditFanLX->text().trimmed(), tagEditFanLX->text().trimmed());
     });
-    return body;
+    return page;
 }
 
 QWidget *FriendPageFanLX::buildQueryBodyFanLX() {
