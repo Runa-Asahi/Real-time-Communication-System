@@ -144,14 +144,57 @@ inline QString friendChromeStyleFanLX(const QString &accentName) {
         "QWidget#friendPageFanLX QLabel#friendEmptyTitleFanLX[error=\"true\"]{color:#D93025;}"
         "QWidget#friendPageFanLX QLabel#friendEmptyBodyFanLX{color:#6B7280;font-size:13px;"
         "background:transparent;}"
+        "QWidget#friendPageFanLX QPushButton[friendRole=\"segment\"]{background:transparent;color:#6B7280;"
+        "border:none;border-bottom:2px solid transparent;border-radius:0px;padding:0px 14px;"
+        "min-height:36px;font-size:14px;font-weight:600;}"
+        "QWidget#friendPageFanLX QPushButton[friendRole=\"segment\"]:hover{color:#1F2329;}"
+        "QWidget#friendPageFanLX QPushButton[friendRole=\"segment\"][active=\"true\"]{color:@@ACCENT@@;"
+        "border-bottom:2px solid @@ACCENT@@;}"
+        "QWidget#friendPageFanLX QLabel#friendHomeTitleFanLX{color:#1F2329;font-size:20px;font-weight:600;"
+        "background:transparent;}"
+        "QWidget#friendPageFanLX QLabel#friendDetailRemarkFanLX{color:#1F2329;font-size:18px;font-weight:600;"
+        "background:transparent;}"
+        "QWidget#friendPageFanLX QLabel#friendDetailRemarkFanLX[muted=\"true\"]{color:#6B7280;font-size:14px;"
+        "font-weight:400;}"
+        "QWidget#friendPageFanLX QLabel#friendDetailAccountFanLX{color:#6B7280;font-size:13px;"
+        "background:transparent;}"
+        "QWidget#friendPageFanLX QLabel#friendBadgeFanLX{background:#D93025;color:#ffffff;border-radius:9px;"
+        "padding:0px 6px;font-size:11px;font-weight:700;}"
+        "QWidget#friendPageFanLX QLabel#friendFieldFanLX{color:#6B7280;font-size:12px;background:transparent;}"
+        "QWidget#friendPageFanLX QLabel#friendNoticeFanLX{background:#F4F7FB;color:#1F2329;"
+        "border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:13px;}"
+        "QWidget#friendPageFanLX QLabel#friendInlineResultFanLX{color:#6B7280;font-size:13px;"
+        "background:transparent;}"
+        "QWidget#friendPageFanLX QLabel#friendInlineResultFanLX[tone=\"ok\"]{color:#16A34A;}"
+        "QWidget#friendPageFanLX QLabel#friendInlineResultFanLX[tone=\"bad\"]{color:#D93025;}"
+        "QWidget#friendPageFanLX QLabel#friendTagChipFanLX{background:#F3F4F6;color:#6B7280;"
+        "border-radius:10px;padding:2px 8px;font-size:12px;}"
+        "QWidget#friendPageFanLX QLabel#friendResultTitleFanLX{color:#1F2329;font-size:16px;font-weight:600;"
+        "background:transparent;}"
+        "QWidget#friendPageFanLX QLabel#friendTemporaryNoteFanLX{color:#6B7280;font-size:12px;"
+        "background:transparent;}"
+        "QWidget#friendPageFanLX QFrame#friendDetailFanLX{background:#ffffff;border:1px solid #E5E7EB;"
+        "border-radius:12px;}"
         "QWidget#friendPageFanLX QListWidget#friendListFanLX,"
-        "QWidget#friendPageFanLX QListWidget#friendResultListFanLX{border:1px solid #E5E7EB;"
+        "QWidget#friendPageFanLX QListWidget#friendResultListFanLX,"
+        "QWidget#friendPageFanLX QListWidget#friendCandidateListFanLX,"
+        "QWidget#friendPageFanLX QListWidget#friendIncomingListFanLX,"
+        "QWidget#friendPageFanLX QListWidget#friendOutgoingListFanLX,"
+        "QWidget#friendPageFanLX QListWidget#friendTemporaryListFanLX{border:1px solid #E5E7EB;"
         "border-radius:12px;background:#ffffff;outline:none;}"
         "QWidget#friendPageFanLX QListWidget#friendListFanLX::item,"
-        "QWidget#friendPageFanLX QListWidget#friendResultListFanLX::item{background:transparent;"
+        "QWidget#friendPageFanLX QListWidget#friendResultListFanLX::item,"
+        "QWidget#friendPageFanLX QListWidget#friendCandidateListFanLX::item,"
+        "QWidget#friendPageFanLX QListWidget#friendIncomingListFanLX::item,"
+        "QWidget#friendPageFanLX QListWidget#friendOutgoingListFanLX::item,"
+        "QWidget#friendPageFanLX QListWidget#friendTemporaryListFanLX::item{background:transparent;"
         "color:#1F2329;border:none;padding:0px;}"
         "QWidget#friendPageFanLX QListWidget#friendListFanLX::item:selected,"
-        "QWidget#friendPageFanLX QListWidget#friendResultListFanLX::item:selected{background:transparent;"
+        "QWidget#friendPageFanLX QListWidget#friendResultListFanLX::item:selected,"
+        "QWidget#friendPageFanLX QListWidget#friendCandidateListFanLX::item:selected,"
+        "QWidget#friendPageFanLX QListWidget#friendIncomingListFanLX::item:selected,"
+        "QWidget#friendPageFanLX QListWidget#friendOutgoingListFanLX::item:selected,"
+        "QWidget#friendPageFanLX QListWidget#friendTemporaryListFanLX::item:selected{background:transparent;"
         "color:#1F2329;}");
     style.replace(QStringLiteral("@@ACCENT@@"), accent.name());
     style.replace(QStringLiteral("@@HOVER@@"), accent.darker(115).name());
@@ -206,6 +249,12 @@ inline QPushButton *friendDangerButtonFanLX(const QString &text, QWidget *parent
 
 inline QPushButton *friendLinkButtonFanLX(const QString &text, QWidget *parent) {
     return friendRoleButtonFanLX(text, QStringLiteral("link"), parent);
+}
+
+inline QPushButton *friendSegmentButtonFanLX(const QString &text, QWidget *parent) {
+    auto *button = friendRoleButtonFanLX(text, QStringLiteral("segment"), parent);
+    button->setProperty("active", QStringLiteral("false"));
+    return button;
 }
 
 class FriendCardFanLX : public QFrame {
@@ -344,6 +393,10 @@ class FriendEmptyStateFanLX : public QWidget {
         }
         return action_;
     }
+    void setActionVisible(bool visible) {
+        if (action_)
+            action_->setVisible(visible);
+    }
     void setError(bool error) {
         mark_->setError(error);
         title_->setProperty("error", error ? QStringLiteral("true") : QStringLiteral("false"));
@@ -363,6 +416,9 @@ class FriendEmptyStateFanLX : public QWidget {
 class FriendRowDelegateFanLX : public QStyledItemDelegate {
   public:
     explicit FriendRowDelegateFanLX(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+
+    // 临时会话行画「已发 n/N」。0 表示还不知道上限，不画这枚标记。
+    void setDirectionLimit(int limit) { directionLimit_ = limit; }
 
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
         const auto parts = friendLinePartsFanLX(index.data(Qt::DisplayRole).toString());
@@ -403,9 +459,23 @@ class FriendRowDelegateFanLX : public QStyledItemDelegate {
 
         const int textLeft = avatar.right() + 12;
         const int textWidth = qMax(0, option.rect.right() - 12 - textLeft);
+        QString secondary;
+        QString chipText;
+        if (parts.friendRecord) {
+            secondary = parts.remark.isEmpty() ? QString() : parts.account;
+            chipText = parts.tag;
+        } else {
+            secondary = parts.subtitle;
+            const auto marker = QStringLiteral("我已发 ");
+            const auto at = directionLimit_ > 0 ? secondary.indexOf(marker) : -1;
+            if (at >= 0) {
+                const auto sent = secondary.mid(at + marker.size()).section(QLatin1Char(' '), 0, 0);
+                if (!sent.isEmpty())
+                    chipText = QStringLiteral("已发 %1/%2").arg(sent).arg(directionLimit_);
+            }
+        }
         const QString primary = parts.remark.isEmpty() ? parts.account : parts.remark;
-        const QString secondary = parts.remark.isEmpty() ? QString() : parts.account;
-        const bool hasSecondary = !secondary.isEmpty() || !parts.tag.isEmpty();
+        const bool hasSecondary = !secondary.isEmpty() || !chipText.isEmpty();
         QFont primaryFont = option.font;
         primaryFont.setPixelSize(14);
         primaryFont.setWeight(QFont::DemiBold);
@@ -425,8 +495,8 @@ class FriendRowDelegateFanLX : public QStyledItemDelegate {
         secondaryFont.setPixelSize(12);
         QFontMetrics secondaryFm(secondaryFont);
         int chipWidth = 0;
-        if (!parts.tag.isEmpty())
-            chipWidth = secondaryFm.horizontalAdvance(parts.tag) + 16;
+        if (!chipText.isEmpty())
+            chipWidth = secondaryFm.horizontalAdvance(chipText) + 16;
         const int gap = !secondary.isEmpty() && chipWidth > 0 ? 8 : 0;
         const int natural = secondary.isEmpty() ? 0 : secondaryFm.horizontalAdvance(secondary);
         const int accountWidth = qMin(natural, qMax(0, textWidth - chipWidth - gap));
@@ -436,7 +506,7 @@ class FriendRowDelegateFanLX : public QStyledItemDelegate {
         if (!secondary.isEmpty())
             painter->drawText(accountRect, Qt::AlignLeft | Qt::AlignVCenter,
                               secondaryFm.elidedText(secondary, Qt::ElideRight, accountWidth));
-        if (!parts.tag.isEmpty()) {
+        if (!chipText.isEmpty()) {
             const QRect chip(textLeft + (secondary.isEmpty() ? 0 : accountWidth + gap), option.rect.top() + 33,
                              chipWidth, 20);
             painter->setPen(Qt::NoPen);
@@ -444,10 +514,13 @@ class FriendRowDelegateFanLX : public QStyledItemDelegate {
             painter->drawRoundedRect(chip, 10, 10);
             painter->setPen(QColor(QStringLiteral("#6B7280")));
             painter->setFont(secondaryFont);
-            painter->drawText(chip, Qt::AlignCenter, parts.tag);
+            painter->drawText(chip, Qt::AlignCenter, chipText);
         }
         painter->restore();
     }
+
+  private:
+    int directionLimit_ = 0;
 };
 
 inline void prepareFriendRowListFanLX(QListWidget *list, const QString &objectName) {

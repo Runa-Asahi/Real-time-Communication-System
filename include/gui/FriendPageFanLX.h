@@ -1,4 +1,5 @@
 #pragma once
+#include <QStringList>
 #include <QWidget>
 
 class QComboBox;
@@ -6,11 +7,16 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QShowEvent;
 class QStackedWidget;
 
 namespace fanlxGui {
 
 class DomainControllerFanLX;
+class FriendAvatarFanLX;
+class FriendEmptyStateFanLX;
+class FriendPageHeaderFanLX;
+class FriendRowDelegateFanLX;
 
 // FriendPageFanLX：好友页面。对应课设要求 2：
 //   （1）好友信息的添加、修改、删除、查询；
@@ -24,11 +30,16 @@ class FriendPageFanLX : public QWidget {
 
   public:
     explicit FriendPageFanLX(DomainControllerFanLX *controller, QWidget *parent = nullptr);
+    // 截图和页内跳转用。0 首页，1 添加，2 备注，3 共同好友，4 申请。
+    void showFriendSectionFanLX(int index);
 
   public slots:
     void refreshFanLX();
     // 从服务端重新读取好友申请与临时会话（打开申请页、收到好友动态时调用）。
     void refreshRequestsFanLX();
+
+  protected:
+    void showEvent(QShowEvent *event) override;
 
   private:
     QWidget *buildHomeFanLX();
@@ -40,6 +51,14 @@ class FriendPageFanLX : public QWidget {
     QString selectedPeerFanLX() const;
     void openRemarkPageFanLX();
     void refreshCandidatesFanLX();
+    void applyFriendFilterFanLX();
+    void updateFriendDetailFanLX();
+    void confirmRemoveFriendFanLX(const QString &peer);
+    void openCommonQueryFanLX(const QString &peer);
+    void showQueryResultFanLX(const QStringList &rows, const QString &note, const QString &title, bool success);
+    void updateRequestActionsFanLX();
+    void syncFriendActionsFanLX();
+    FriendPageHeaderFanLX *installFriendHeaderFanLX(int index, const QString &title);
 
     DomainControllerFanLX *controllerFanLX = nullptr;
     QStackedWidget *stackFanLX = nullptr;
@@ -78,6 +97,20 @@ class FriendPageFanLX : public QWidget {
     QPushButton *crossCommonButtonFanLX = nullptr;
     QListWidget *resultListFanLX = nullptr;
     QLabel *resultHintFanLX = nullptr;
+
+    QLineEdit *searchEditFanLX = nullptr;
+    QLabel *homeTitleFanLX = nullptr;
+    QStackedWidget *homeListStackFanLX = nullptr;
+    FriendEmptyStateFanLX *homeEmptyFanLX = nullptr;
+    QLabel *requestBadgeFanLX = nullptr;
+    FriendAvatarFanLX *detailAvatarFanLX = nullptr;
+    QLabel *detailRemarkFanLX = nullptr;
+    QLabel *detailAccountFanLX = nullptr;
+    QLabel *detailTagFanLX = nullptr;
+    QPushButton *detailCommonButtonFanLX = nullptr;
+    FriendRowDelegateFanLX *rowDelegateFanLX = nullptr;
+    // 只在刚打开申请页时为真：用来挑默认分段。同意、拒绝、撤回、刷新都不置位。
+    bool pickRequestSegmentFanLX = false;
 };
 
 } // namespace fanlxGui
