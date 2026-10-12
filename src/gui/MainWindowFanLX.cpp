@@ -6,7 +6,12 @@
 #include "gui/HistoryDialogFanLX.h"
 #include "network/MessageCodecFanLX.h"
 #include <QCloseEvent>
+#include <QFrame>
 #include <QHBoxLayout>
+#include <QItemSelectionModel>
+#include <QPainter>
+#include <QPainterPath>
+#include <QStyledItemDelegate>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -22,6 +27,7 @@
 #include <QDateTime>
 #include <QScrollBar>
 #include <QTextCursor>
+#include <algorithm>
 
 namespace fanlxGui {
 
@@ -31,6 +37,205 @@ QString escapeHtmlFanLX(const QString &text) {
     auto escaped = text.toHtmlEscaped();
     escaped.replace(QLatin1Char('\n'), QStringLiteral("<br/>"));
     return escaped;
+}
+
+// ---------- 聊天页视觉规范（只作用于聊天页，不影响账号 / 好友 / 群页签） ----------
+// 统一在这里定义颜色，样式表与消息 HTML、会话列表绘制共用同一套取值。
+namespace chatThemeFanLX {
+const QString pageBg = QStringLiteral("#f3f5f8");      // 页面底色：柔和浅灰
+const QString panelBg = QStringLiteral("#ffffff");     // 面板：白色
+const QString border = QStringLiteral("#e3e7ed");      // 面板边框 / 分隔线
+const QString canvasBg = QStringLiteral("#f7f9fb");    // 消息区底色（略深于面板，衬托白色气泡）
+const QString textPrimary = QStringLiteral("#1f2329"); // 正文
+const QString textSecondary = QStringLiteral("#5b6472");
+const QString textMuted = QStringLiteral("#8a94a3");   // 时间、状态等辅助信息
+const QString accent = QStringLiteral("#2f6fed");      // 克制的主色蓝
+const QString accentHover = QStringLiteral("#2961d6");
+const QString accentPressed = QStringLiteral("#2253ba");
+const QString accentSoft = QStringLiteral("#eaf1fe");  // 选中 / 提示的浅蓝底
+const QString selfBubble = QStringLiteral("#dcebff");  // 自己发送的气泡
+const QString peerBubble = QStringLiteral("#ffffff");  // 收到的气泡
+const QString danger = QStringLiteral("#d93025");      // 发送失败
+const QString dangerSoft = QStringLiteral("#fdeeee");
+} // namespace chatThemeFanLX
+
+// 聊天页唯一的样式入口：挂在聊天页根控件（#chatPageFanLX）上，用 objectName / 属性选择器
+// 限定作用范围，因此不会扩散到其他页签，也不必在各控件上零散 setStyleSheet。
+QString chatPageStyleFanLX() {
+    using namespace chatThemeFanLX;
+    return QStringLiteral(
+               "QWidget#chatPageFanLX{background:%1;}"
+               // 左右两块白色面板
+               "QFrame#chatSidebarFanLX,QFrame#chatPanelFanLX{background:%2;border:1px solid %3;"
+               "border-radius:12px;}"
+               "QLabel#chatSidebarTitleFanLX{font-size:16px;font-weight:600;color:%4;}"
+               "QListView#chatConversationsFanLX{background:transparent;border:none;outline:none;}"
+               // 聊天标题区
+               "QFrame#chatHeaderFanLX{background:transparent;border:none;border-bottom:1px solid %3;"
+               "border-top-left-radius:12px;border-top-right-radius:12px;}"
+               "QLabel#chatTitleFanLX{font-size:17px;font-weight:600;color:%4;}"
+               "QLabel#chatMetaFanLX{font-size:12px;color:%5;}"
+               "QLabel#chatServiceFanLX{font-size:12px;color:%6;}"
+               // 消息区
+               "QTextBrowser#chatMessages{background:%7;border:none;}"
+               // 工具条：次要按钮 + 新消息提示
+               "QFrame#chatToolbarFanLX{background:%7;border:none;border-bottom:1px solid %3;}"
+               "QPushButton[chatRole=\"secondary\"]{background:%2;color:%5;border:1px solid %3;"
+               "border-radius:6px;padding:0 12px;min-height:26px;font-size:12px;}"
+               "QPushButton[chatRole=\"secondary\"]:hover{background:%11;color:%8;border-color:#c9d6ef;}"
+               "QPushButton[chatRole=\"secondary\"]:pressed{background:#dde7fb;}"
+               "QPushButton[chatRole=\"secondary\"]:disabled{background:transparent;color:#b9c0ca;"
+               "border-color:#eceff3;}"
+               "QLabel#chatNewMessageHintFanLX{background:%11;color:%8;border:1px solid #cddcf8;"
+               "border-radius:11px;padding:2px 12px;font-size:12px;}"
+               // 输入区
+               "QFrame#chatComposerFanLX{background:%2;border:none;border-bottom-left-radius:12px;"
+               "border-bottom-right-radius:12px;}"
+               "QLineEdit#chatEditorFanLX{background:%7;color:%4;border:1px solid %3;border-radius:8px;"
+               "padding:0 12px;min-height:38px;font-size:14px;selection-background-color:#bcd3fb;}"
+               "QLineEdit#chatEditorFanLX:hover{border-color:#cdd5df;}"
+               "QLineEdit#chatEditorFanLX:focus{background:%2;border:1px solid %8;}"
+               "QLabel#chatEditorHintFanLX{font-size:11px;color:%6;}"
+               "QPushButton#chatSendButtonFanLX{background:%8;color:#ffffff;border:none;border-radius:8px;"
+               "min-height:40px;min-width:88px;padding:0 20px;font-size:14px;font-weight:600;}"
+               "QPushButton#chatSendButtonFanLX:hover{background:%9;}"
+               "QPushButton#chatSendButtonFanLX:pressed{background:%10;}"
+               "QPushButton#chatSendButtonFanLX:disabled{background:#b9cdf5;color:#f4f7fd;}"
+               // 分栏手柄：平时只是两块面板之间的留白，悬停时显出浅色提示可拖动
+               "QSplitter#chatSplitterFanLX::handle{background:transparent;}"
+               "QSplitter#chatSplitterFanLX::handle:hover{background:#dfe5ee;border-radius:3px;}"
+               // 细滚动条
+               "QWidget#chatPageFanLX QScrollBar:vertical{background:transparent;width:10px;margin:2px;}"
+               "QWidget#chatPageFanLX QScrollBar::handle:vertical{background:#cfd6df;border-radius:3px;"
+               "min-height:36px;}"
+               "QWidget#chatPageFanLX QScrollBar::handle:vertical:hover{background:#b3bcc8;}"
+               "QWidget#chatPageFanLX QScrollBar::add-line:vertical,"
+               "QWidget#chatPageFanLX QScrollBar::sub-line:vertical{height:0;}"
+               "QWidget#chatPageFanLX QScrollBar::add-page:vertical,"
+               "QWidget#chatPageFanLX QScrollBar::sub-page:vertical{background:transparent;}")
+        .arg(pageBg, panelBg, border, textPrimary, textSecondary, textMuted, canvasBg, accent, accentHover,
+             accentPressed, accentSoft);
+}
+
+// 会话列表行：两行布局（"[群] 1001" 标题 + 最后一条消息摘要）与未读角标。
+// 标题文字与颜色完全来自模型（DisplayRole 的类型前缀 + ForegroundRole 的类型颜色），
+// 因此 [好友] 蓝 / [群] 紫 / [临时] 橙 的含义与原来一致，只是排版更舒展。
+class ConversationDelegateFanLX : public QStyledItemDelegate {
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        (void)index;
+        const auto title = QFontMetrics(titleFont(option.font));
+        const auto sub = QFontMetrics(subtitleFont(option.font));
+        return {option.rect.width(), kPadY * 2 + title.height() + kLineGap + sub.height() + kRowGap};
+    }
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        if (!index.isValid())
+            return;
+        using namespace chatThemeFanLX;
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+
+        const QRectF card = QRectF(option.rect).adjusted(kMarginX, kRowGap / 2.0, -kMarginX, -kRowGap / 2.0);
+        const bool selected = option.state.testFlag(QStyle::State_Selected);
+        const bool hovered = option.state.testFlag(QStyle::State_MouseOver);
+        if (selected || hovered) {
+            QPainterPath path;
+            path.addRoundedRect(card, 8, 8);
+            painter->fillPath(path, QColor(selected ? accentSoft : QStringLiteral("#f4f6f9")));
+            if (selected) {
+                // 左侧细竖条强调当前会话
+                QPainterPath bar;
+                bar.addRoundedRect(QRectF(card.left() + 2, card.top() + 10, 3, card.height() - 20), 1.5, 1.5);
+                painter->fillPath(bar, QColor(accent));
+            }
+        }
+
+        const auto titleF = titleFont(option.font);
+        const auto subF = subtitleFont(option.font);
+        const QFontMetrics titleM(titleF);
+        const QFontMetrics subM(subF);
+        const auto content = card.toRect().adjusted(kPadX, kPadY - kRowGap / 2, -kPadX, 0);
+
+        // 未读角标（右上），数量为 0 时不画
+        const auto unread = index.data(ConversationListModelFanLX::UnreadRoleFanLX).toLongLong();
+        int badgeWidth = 0;
+        if (unread > 0) {
+            QFont badgeF = subF;
+            badgeF.setPixelSize(11);
+            badgeF.setWeight(QFont::DemiBold);
+            const QFontMetrics badgeM(badgeF);
+            const auto text = unread > 99 ? QStringLiteral("99+") : QString::number(unread);
+            const int h = 18;
+            badgeWidth = std::max(h, badgeM.horizontalAdvance(text) + 12);
+            const QRect badge(content.right() - badgeWidth, content.top() + (titleM.height() - h) / 2, badgeWidth, h);
+            QPainterPath pill;
+            pill.addRoundedRect(badge, h / 2.0, h / 2.0);
+            painter->fillPath(pill, QColor(QStringLiteral("#e5484d")));
+            painter->setFont(badgeF);
+            painter->setPen(Qt::white);
+            painter->drawText(badge, Qt::AlignCenter, text);
+            badgeWidth += 8;
+        }
+
+        // 标题：模型给出的"[类型] 名称"，用模型给出的类型颜色
+        const auto titleText = index.data(Qt::DisplayRole).toString();
+        const auto brush = index.data(Qt::ForegroundRole).value<QBrush>();
+        const QColor titleColor = brush.style() == Qt::NoBrush ? QColor(textPrimary) : brush.color();
+        const QRect titleRect(content.left(), content.top(), content.width() - badgeWidth, titleM.height());
+        painter->setFont(titleF);
+        painter->setPen(titleColor);
+        painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
+                          titleM.elidedText(titleText, Qt::ElideRight, titleRect.width()));
+
+        // 摘要：最后一条消息（没有时给出柔和的占位文字）
+        auto subtitle = index.data(ConversationListModelFanLX::SubtitleRoleFanLX).toString();
+        subtitle.replace(QLatin1Char('\n'), QLatin1Char(' '));
+        const bool emptySubtitle = subtitle.trimmed().isEmpty();
+        const QRect subRect(content.left(), titleRect.bottom() + 1 + kLineGap, content.width(), subM.height());
+        painter->setFont(subF);
+        painter->setPen(QColor(emptySubtitle ? QStringLiteral("#b4bcc7") : textMuted));
+        painter->drawText(subRect, Qt::AlignLeft | Qt::AlignVCenter,
+                          subM.elidedText(emptySubtitle ? QStringLiteral("暂无消息") : subtitle, Qt::ElideRight,
+                                          subRect.width()));
+        painter->restore();
+    }
+
+  private:
+    static constexpr int kMarginX = 8;  // 行卡片与列表边缘的距离
+    static constexpr int kPadX = 14;    // 行内左右留白
+    static constexpr int kPadY = 12;    // 行内上下留白
+    static constexpr int kLineGap = 4;  // 标题与摘要的间距
+    static constexpr int kRowGap = 4;   // 行与行之间的间距
+
+    static QFont titleFont(QFont base) {
+        base.setPixelSize(14);
+        base.setWeight(QFont::DemiBold);
+        return base;
+    }
+    static QFont subtitleFont(QFont base) {
+        base.setPixelSize(12);
+        base.setWeight(QFont::Normal);
+        return base;
+    }
+};
+
+// 列表模型每次刷新都会重置（选中状态随之丢失）：按当前会话键把高亮恢复到对应行。
+// 只改选中外观，不发 clicked，因此不会重复触发打开会话、标记已读等逻辑。
+void syncConversationSelectionFanLX(QListView *view, const ConversationListModelFanLX *model,
+                                    const QString &currentKey) {
+    if (!view || !model || !view->selectionModel())
+        return;
+    for (int row = 0; row < model->rowCount(); ++row) {
+        if (!currentKey.isEmpty() && model->keyAt(row) == currentKey) {
+            const auto index = model->index(row, 0);
+            view->selectionModel()->setCurrentIndex(index, QItemSelectionModel::ClearAndSelect);
+            return;
+        }
+    }
+    view->selectionModel()->clearSelection();
 }
 
 } // namespace
@@ -96,6 +301,7 @@ MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControll
     }
 
     onConversationsChangedFanLX();
+    renderMessagesFanLX(); // 首屏即显示设计过的空状态，而不是消息区的默认占位文字
     refreshHeaderFanLX();
     if (domainFanLX)
         statusFanLX->setText(domainFanLX->loadSummary());
@@ -112,71 +318,161 @@ void MainWindowFanLX::showNoticeFanLX(const QString &text) {
     serviceLabelFanLX->setText(QStringLiteral("未连接：%1").arg(text));
 }
 
-// 页签 1：聊天。左会话列表 + 右消息与编辑器（原布局保持不变）。
+// 页签 1：聊天。左会话面板 + 右聊天面板（标题区 / 消息区 / 工具条 / 输入区）。
+// 只调整布局与外观：控件实例、信号槽连接与按钮行为与原来一一对应。
 void MainWindowFanLX::buildChatPageFanLX() {
-    conversationViewFanLX = new QListView(this);
+    // 聊天页根控件：页面级样式表只挂在这里，作用域限于聊天页。
+    auto *page = new QWidget(this);
+    page->setObjectName(QStringLiteral("chatPageFanLX"));
+    page->setAttribute(Qt::WA_StyledBackground, true);
+    page->setStyleSheet(chatPageStyleFanLX());
+
+    // ---- 左侧：会话面板 ----
+    auto *sidebar = new QFrame(page);
+    sidebar->setObjectName(QStringLiteral("chatSidebarFanLX"));
+    auto *sidebarTitle = new QLabel(QStringLiteral("会话"), sidebar);
+    sidebarTitle->setObjectName(QStringLiteral("chatSidebarTitleFanLX"));
+
+    conversationViewFanLX = new QListView(sidebar);
+    conversationViewFanLX->setObjectName(QStringLiteral("chatConversationsFanLX"));
     conversationViewFanLX->setModel(conversationsFanLX);
     conversationViewFanLX->setUniformItemSizes(false);
     conversationViewFanLX->setMinimumWidth(240);
+    conversationViewFanLX->setFrameShape(QFrame::NoFrame);
+    conversationViewFanLX->setItemDelegate(new ConversationDelegateFanLX(conversationViewFanLX));
+    conversationViewFanLX->setMouseTracking(true);
+    conversationViewFanLX->viewport()->setAttribute(Qt::WA_Hover, true);
+    conversationViewFanLX->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    conversationViewFanLX->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    conversationViewFanLX->setCursor(Qt::PointingHandCursor);
 
-    messageViewFanLX = new QTextBrowser(this);
+    auto *sidebarHead = new QVBoxLayout();
+    sidebarHead->setContentsMargins(22, 18, 22, 10);
+    sidebarHead->addWidget(sidebarTitle);
+    auto *sidebarLayout = new QVBoxLayout(sidebar);
+    sidebarLayout->setContentsMargins(0, 0, 0, 8);
+    sidebarLayout->setSpacing(0);
+    sidebarLayout->addLayout(sidebarHead);
+    sidebarLayout->addWidget(conversationViewFanLX, 1);
+
+    // ---- 右侧：聊天面板 ----
+    auto *panel = new QFrame(page);
+    panel->setObjectName(QStringLiteral("chatPanelFanLX"));
+    panel->setMinimumWidth(420);
+
+    // 标题区：当前会话（主）+ 账号与服务信息（次）
+    auto *header = new QFrame(panel);
+    header->setObjectName(QStringLiteral("chatHeaderFanLX"));
+    auto *chatTitle = new QLabel(header);
+    chatTitle->setObjectName(QStringLiteral("chatTitleFanLX"));
+    chatTitle->setTextFormat(Qt::RichText);
+    chatTitle->setWordWrap(true); // 名称过长时换行，而不是把右侧面板撑宽
+    chatTitle->setText(QStringLiteral("未选择会话"));
+    headerFanLX = new QLabel(header);
+    headerFanLX->setObjectName(QStringLiteral("chatMetaFanLX"));
+    headerFanLX->setWordWrap(true);
+    // 聊天页顶部固定显示：本连接属于哪个服务，以及列表里两种标志的含义。
+    serviceLabelFanLX = new QLabel(header);
+    serviceLabelFanLX->setObjectName(QStringLiteral("chatServiceFanLX"));
+    serviceLabelFanLX->setWordWrap(true);
+    serviceLabelFanLX->setText(
+        QStringLiteral("会话列表标志：<span style='color:#0b6bcb'>[好友]</span> 一对一的联系人 ｜ "
+                       "<span style='color:#7b1fa2'>[群]</span> 群聊；两种会话在列表里用不同颜色区分。"));
+    auto *headerLayout = new QVBoxLayout(header);
+    headerLayout->setContentsMargins(24, 16, 24, 14);
+    headerLayout->setSpacing(4);
+    headerLayout->addWidget(chatTitle);
+    headerLayout->addWidget(headerFanLX);
+    headerLayout->addWidget(serviceLabelFanLX);
+
+    // 消息区
+    messageViewFanLX = new QTextBrowser(panel);
     messageViewFanLX->setObjectName(QStringLiteral("chatMessages"));
     messageViewFanLX->setOpenExternalLinks(false);
     messageViewFanLX->setPlaceholderText(QStringLiteral("选择左侧会话开始聊天"));
+    messageViewFanLX->setFrameShape(QFrame::NoFrame);
+    messageViewFanLX->document()->setDocumentMargin(20);
+    messageViewFanLX->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    editorFanLX = new QLineEdit(this);
+    // 工具条：查看更早 / 返回最新（左）、新消息提示（中）、重连（右）——都是次要操作
+    earlierButtonFanLX = new QPushButton(QStringLiteral("查看更早"), panel);
+    latestButtonFanLX = new QPushButton(QStringLiteral("返回最新"), panel);
+    reconnectButtonFanLX = new QPushButton(QStringLiteral("重连"), panel);
+    for (auto *button : {earlierButtonFanLX, latestButtonFanLX, reconnectButtonFanLX}) {
+        button->setProperty("chatRole", QStringLiteral("secondary"));
+        button->setCursor(Qt::PointingHandCursor);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+    earlierButtonFanLX->setEnabled(false);
+    latestButtonFanLX->setEnabled(false);
+    newMessageHintFanLX = new QLabel(panel);
+    newMessageHintFanLX->setObjectName(QStringLiteral("chatNewMessageHintFanLX"));
+    newMessageHintFanLX->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    newMessageHintFanLX->setVisible(false);
+
+    auto *toolbar = new QFrame(panel);
+    toolbar->setObjectName(QStringLiteral("chatToolbarFanLX"));
+    auto *toolRow = new QHBoxLayout(toolbar);
+    toolRow->setContentsMargins(20, 8, 20, 8);
+    toolRow->setSpacing(8);
+    toolRow->addWidget(earlierButtonFanLX);
+    toolRow->addWidget(latestButtonFanLX);
+    toolRow->addStretch(1);
+    toolRow->addWidget(newMessageHintFanLX);
+    toolRow->addStretch(1);
+    toolRow->addWidget(reconnectButtonFanLX);
+
+    // 输入区：输入框（主）+ 字节提示（辅）+ 发送按钮（主操作）
+    editorFanLX = new QLineEdit(panel);
+    editorFanLX->setObjectName(QStringLiteral("chatEditorFanLX"));
     editorFanLX->setPlaceholderText(QStringLiteral("输入中文消息后回车或点击发送"));
     // 协议上限是 UTF-8 字节数，而 QLineEdit::setMaxLength 按 UTF-16 单元计：
     // 中文一个字 1 个单元但 3 个字节，所以只靠 setMaxLength 会放行约 3 倍超限的内容。
     // 真正的裁剪在 onEditorChangedFanLX 里按字节做，这里只挡住极端粘贴。
     editorFanLX->setMaxLength(static_cast<int>(MessageCodecFanLX::maxText));
-    editorHintFanLX = new QLabel(this);
-    editorHintFanLX->setStyleSheet(QStringLiteral("color:#5f6368;"));
-    sendButtonFanLX = new QPushButton(QStringLiteral("发送"), this);
-    earlierButtonFanLX = new QPushButton(QStringLiteral("查看更早"), this);
-    latestButtonFanLX = new QPushButton(QStringLiteral("返回最新"), this);
-    reconnectButtonFanLX = new QPushButton(QStringLiteral("重连"), this);
-    earlierButtonFanLX->setEnabled(false);
-    latestButtonFanLX->setEnabled(false);
+    editorFanLX->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    editorHintFanLX = new QLabel(panel);
+    editorHintFanLX->setObjectName(QStringLiteral("chatEditorHintFanLX"));
+    editorHintFanLX->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    editorHintFanLX->setText(QStringLiteral("%1 / %2 字节").arg(0).arg(static_cast<int>(MessageCodecFanLX::maxText)));
+    sendButtonFanLX = new QPushButton(QStringLiteral("发送"), panel);
+    sendButtonFanLX->setObjectName(QStringLiteral("chatSendButtonFanLX"));
+    sendButtonFanLX->setCursor(Qt::PointingHandCursor);
+    sendButtonFanLX->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    headerFanLX = new QLabel(this);
-    headerFanLX->setWordWrap(true);
-    // 聊天页顶部固定显示：本连接属于哪个服务，以及列表里两种标志的含义。
-    serviceLabelFanLX = new QLabel(this);
-    serviceLabelFanLX->setWordWrap(true);
-    serviceLabelFanLX->setText(
-        QStringLiteral("会话列表标志：<span style='color:#0b6bcb'>[好友]</span> 一对一的联系人 ｜ "
-                       "<span style='color:#7b1fa2'>[群]</span> 群聊；两种会话在列表里用不同颜色区分。"));
-    newMessageHintFanLX = new QLabel(this);
-    newMessageHintFanLX->setStyleSheet(QStringLiteral("color:#0b6bcb;"));
-    newMessageHintFanLX->setVisible(false);
-
-    auto *editorRow = new QHBoxLayout();
+    auto *composer = new QFrame(panel);
+    composer->setObjectName(QStringLiteral("chatComposerFanLX"));
+    auto *editorRow = new QHBoxLayout(composer);
+    editorRow->setContentsMargins(20, 14, 20, 16);
+    editorRow->setSpacing(12);
     editorRow->addWidget(editorFanLX, 1);
     editorRow->addWidget(editorHintFanLX);
     editorRow->addWidget(sendButtonFanLX);
 
-    auto *toolRow = new QHBoxLayout();
-    toolRow->addWidget(earlierButtonFanLX);
-    toolRow->addWidget(latestButtonFanLX);
-    toolRow->addWidget(newMessageHintFanLX, 1);
-    toolRow->addWidget(reconnectButtonFanLX);
+    auto *panelLayout = new QVBoxLayout(panel);
+    panelLayout->setContentsMargins(1, 1, 1, 1); // 让出 1px 面板边框
+    panelLayout->setSpacing(0);
+    panelLayout->addWidget(header);
+    panelLayout->addWidget(messageViewFanLX, 1);
+    panelLayout->addWidget(toolbar);
+    panelLayout->addWidget(composer);
 
-    auto *right = new QWidget(this);
-    auto *rightLayout = new QVBoxLayout(right);
-    rightLayout->addWidget(headerFanLX);
-    rightLayout->addWidget(serviceLabelFanLX);
-    rightLayout->addWidget(messageViewFanLX, 1);
-    rightLayout->addLayout(toolRow);
-    rightLayout->addLayout(editorRow);
-
-    auto *splitter = new QSplitter(Qt::Horizontal, this);
-    splitter->addWidget(conversationViewFanLX);
-    splitter->addWidget(right);
+    auto *splitter = new QSplitter(Qt::Horizontal, page);
+    splitter->setObjectName(QStringLiteral("chatSplitterFanLX"));
+    splitter->setHandleWidth(12);
+    splitter->setChildrenCollapsible(false);
+    splitter->addWidget(sidebar);
+    splitter->addWidget(panel);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
+    splitter->setSizes({260, 880});
 
-    tabsFanLX->addTab(splitter, QStringLiteral("聊天"));
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(12, 12, 12, 12);
+    pageLayout->setSpacing(0);
+    pageLayout->addWidget(splitter);
+
+    tabsFanLX->addTab(page, QStringLiteral("聊天"));
 
     connect(conversationViewFanLX, &QListView::clicked, this, &MainWindowFanLX::onConversationSelectedFanLX);
     connect(sendButtonFanLX, &QPushButton::clicked, this, &MainWindowFanLX::onSendFanLX);
@@ -346,11 +642,38 @@ void MainWindowFanLX::refreshHeaderFanLX() {
     storageBackendFanLX = controllerFanLX->storageBackend();
     // 标题栏与页头给用户看的是中文服务名（QQ / 微信 / 微博），控制器内部仍用存储名。
     const auto chatService = controllerFanLX->serviceDisplayName();
-    headerFanLX->setText(QStringLiteral("账号 %1 ｜ 聊天服务 %2 ｜ 存储 %3 ｜ 会话 %4 ｜ 未读 %5")
+    headerFanLX->setText(QStringLiteral("账号 %1 · 聊天服务 %2 · 存储 %3 · 会话 %4 · 未读 %5")
                              .arg(accountFanLX, chatService, storageBackendFanLX)
                              .arg(controllerFanLX->conversations().size())
                              .arg(controllerFanLX->totalUnread()));
     const auto current = controllerFanLX->currentConversation();
+    // 聊天标题区：当前会话的"[类型] 名称"，类型标志沿用列表里的类型颜色。
+    if (auto *chatTitle = findChild<QLabel *>(QStringLiteral("chatTitleFanLX"))) {
+        QString titleHtml = QStringLiteral("未选择会话");
+        if (!current.isEmpty()) {
+            QString name = current;
+            QString kindText = controllerFanLX->currentConversationKindText();
+            QString kindColor;
+            for (const auto &item : controllerFanLX->conversations()) {
+                if (item.key == current) {
+                    name = item.title;
+                    kindText = item.kindText;
+                    kindColor = item.kindColor;
+                    break;
+                }
+            }
+            titleHtml = name.toHtmlEscaped();
+            if (!kindText.isEmpty()) {
+                const auto tag = QStringLiteral("[%1]").arg(kindText).toHtmlEscaped();
+                titleHtml = (kindColor.isEmpty()
+                                 ? tag
+                                 : QStringLiteral("<span style='color:%1'>%2</span>")
+                                       .arg(kindColor.toHtmlEscaped(), tag)) +
+                            QStringLiteral(" ") + titleHtml;
+            }
+        }
+        chatTitle->setText(titleHtml);
+    }
     if (!current.isEmpty()) {
         // 标题栏也带上类型标志：窗口标题一眼能看出当前打开的是群还是好友。
         const auto kind = controllerFanLX->currentConversationKindText();
@@ -363,34 +686,75 @@ void MainWindowFanLX::refreshHeaderFanLX() {
 
 void MainWindowFanLX::onConversationsChangedFanLX() {
     conversationsFanLX->setItems(controllerFanLX->conversations());
+    syncConversationSelectionFanLX(conversationViewFanLX, conversationsFanLX,
+                                   controllerFanLX->currentConversation());
     refreshHeaderFanLX();
 }
 
 void MainWindowFanLX::onMessagesChangedFanLX() {
     renderMessagesFanLX();
+    syncConversationSelectionFanLX(conversationViewFanLX, conversationsFanLX,
+                                   controllerFanLX->currentConversation());
     earlierButtonFanLX->setEnabled(controllerFanLX->historyHasMore());
     latestButtonFanLX->setEnabled(!controllerFanLX->currentConversation().isEmpty());
     refreshHeaderFanLX();
 }
 
+// 消息区渲染：继续使用 QTextBrowser 的 Qt 富文本，只用其稳定支持的表格、单元格底色、
+// 对齐、内边距与基础字体样式（不依赖 Flexbox / Grid / 圆角）。
+// 自己发送的消息靠右、浅蓝底；收到的消息靠左、白底；发送失败用浅红底与红色状态。
+// 所有来自数据的文字（发送者、时间、状态、正文）都经过 HTML 转义。
 void MainWindowFanLX::renderMessagesFanLX() {
+    using namespace chatThemeFanLX;
     QString html;
     for (const auto &item : controllerFanLX->messages()) {
-        const auto color = item.self ? QStringLiteral("#1f6feb") : QStringLiteral("#111111");
+        const auto sender = QStringLiteral("<span style='color:%1; font-weight:600;'>%2</span>")
+                                .arg(item.self ? accent : textSecondary, item.sender.toHtmlEscaped());
+        const auto time = item.timeText.isEmpty()
+                              ? QStringLiteral("<span style='color:%1'>[原始时间未知]</span>").arg(textMuted)
+                              : QStringLiteral("<span style='color:%1'>%2</span>")
+                                    .arg(textMuted, item.timeText.toHtmlEscaped());
         const auto status = item.statusText.isEmpty()
                                 ? QString()
-                                : QStringLiteral(" <span style='color:%1'>[%2]</span>")
-                                      .arg(item.failed ? QStringLiteral("#b3261e") : QStringLiteral("#6e7781"),
-                                           item.statusText.toHtmlEscaped());
-        const auto time = item.timeText.isEmpty()
-                              ? QStringLiteral("<span style='color:#8b949e'>[原始时间未知]</span>")
-                              : QStringLiteral("<span style='color:#8b949e'>%1</span>")
-                                    .arg(item.timeText.toHtmlEscaped());
-        html += QStringLiteral("<p style='margin:2px 0'><b style='color:%1'>%2</b> %3%4<br/>%5</p>")
-                    .arg(color, item.sender.toHtmlEscaped(), time, status, escapeHtmlFanLX(item.body));
+                                : (item.failed
+                                       ? QStringLiteral("&nbsp;&nbsp;<span style='color:%1; font-weight:600;'>"
+                                                        "✕ %2</span>")
+                                       : QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>%2</span>"))
+                                      .arg(item.failed ? danger : textMuted, item.statusText.toHtmlEscaped());
+        const auto align = item.self ? QStringLiteral("right") : QStringLiteral("left");
+        const auto bubble = item.failed ? dangerSoft : (item.self ? selfBubble : peerBubble);
+        // 收到的白色气泡在浅灰底上加一圈浅边框，保证层次；自己的蓝色气泡不需要。
+        const auto bubbleBorder = item.self || item.failed
+                                      ? QStringLiteral("border='0'")
+                                      : QStringLiteral("border='1' style='border-color:#e6eaf0; "
+                                                       "border-style:solid; border-collapse:collapse;'");
+        // 外层两列表格：留白列（约 28%）把气泡限制在舒适的阅读宽度内，并决定靠左还是靠右。
+        const auto spacer = QStringLiteral("<td width='28%'></td>");
+        const auto content =
+            QStringLiteral("<td align='%1' valign='top'>"
+                           "<p align='%1' style='margin:0 2px 5px 2px; font-size:12px;'>%2&nbsp;&nbsp;%3%4</p>"
+                           "<table align='%1' cellspacing='0' cellpadding='11' bgcolor='%5' %6>"
+                           "<tr><td style='color:%7; font-size:14px; line-height:140%;'>%8</td></tr>"
+                           "</table></td>")
+                .arg(align, sender, time, status, bubble, bubbleBorder, textPrimary, escapeHtmlFanLX(item.body));
+        html += QStringLiteral("<table width='100%' cellspacing='0' cellpadding='0' style='margin-bottom:16px;'>"
+                               "<tr>%1</tr></table>")
+                    .arg(item.self ? spacer + content : content + spacer);
     }
-    if (html.isEmpty())
-        html = QStringLiteral("<p style='color:#8b949e'>当前会话没有记录，或历史尚未加载完成。</p>");
+    if (html.isEmpty()) {
+        // 空状态：未选会话与"已选会话但没有记录"分开说明。
+        const bool noConversation = controllerFanLX->currentConversation().isEmpty();
+        const auto title = noConversation ? QStringLiteral("选择左侧会话开始聊天") : QStringLiteral("暂无消息");
+        const auto detail = noConversation
+                                ? QStringLiteral("单聊与群聊都在左侧列表中，点击任意一项即可打开。")
+                                : QStringLiteral("当前会话没有记录，或历史尚未加载完成。");
+        html = QStringLiteral("<table width='100%' cellspacing='0' cellpadding='0' style='margin-top:96px;'>"
+                              "<tr><td align='center'>"
+                              "<p align='center' style='font-size:16px; font-weight:600; color:%1;'>%2</p>"
+                              "<p align='center' style='margin-top:6px; font-size:13px; color:%3;'>%4</p>"
+                              "</td></tr></table>")
+                   .arg(textSecondary, title, textMuted, detail);
+    }
     const auto scroll = messageViewFanLX->verticalScrollBar()->value();
     messageViewFanLX->setHtml(html);
     if (controllerFanLX->followingLatest() && !hasPendingNewMessageFanLX)
