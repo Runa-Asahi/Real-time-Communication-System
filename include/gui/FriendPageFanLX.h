@@ -112,6 +112,9 @@ class FriendPageFanLX : public QWidget {
     QPushButton *crossCommonButtonFanLX = nullptr;
     QListWidget *resultListFanLX = nullptr;
     QLabel *resultHintFanLX = nullptr;
+    QLabel *resultTitleFanLX = nullptr;
+    QStackedWidget *resultStackFanLX = nullptr;
+    FriendEmptyStateFanLX *resultEmptyFanLX = nullptr;
 
     QLineEdit *searchEditFanLX = nullptr;
     QLabel *homeTitleFanLX = nullptr;

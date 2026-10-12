@@ -158,6 +158,7 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
         if (requestsRefreshButtonFanLX)
             header->trailingLayout()->addWidget(requestsRefreshButtonFanLX);
     }
+    installFriendHeaderFanLX(kQueryPage, QStringLiteral("共同好友"));
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(6, 6, 6, 6);
@@ -661,56 +662,86 @@ QWidget *FriendPageFanLX::buildRemarkBodyFanLX() {
 }
 
 QWidget *FriendPageFanLX::buildQueryBodyFanLX() {
-    auto *body = new QWidget();
-    commonPeerEditFanLX = new QLineEdit(body);
+    QVBoxLayout *layout = nullptr;
+    auto *page = friendSubpageShellFanLX(&layout, 1100);
+
+    auto *sameCard = new FriendCardFanLX(QStringLiteral("同服务"), page);
+    commonPeerEditFanLX = new QLineEdit(sameCard);
     commonPeerEditFanLX->setPlaceholderText(QStringLiteral("同一服务内对方的号码"));
-    commonButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("查询同服务共同好友"), body);
-    targetServiceComboFanLX = new QComboBox(body);
-    recommendButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("推荐好友"), body);
-    crossCommonButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("跨服务共同好友"), body);
+    commonButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("查询同服务共同好友"), sameCard);
+    auto *sameRow = new QHBoxLayout();
+    sameRow->setSpacing(8);
+    sameRow->addWidget(commonPeerEditFanLX, 1);
+    sameRow->addWidget(commonButtonFanLX);
+    sameCard->bodyLayout()->addLayout(sameRow);
+
+    auto *crossCard = new FriendCardFanLX(QStringLiteral("跨服务"), page);
+    targetServiceComboFanLX = new QComboBox(crossCard);
+    recommendButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("推荐好友"), crossCard);
+    crossCommonButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("跨服务共同好友"), crossCard);
     recommendButtonFanLX->setToolTip(QStringLiteral("把另一个服务里的好友推荐到当前服务（查询后需手动添加）"));
-    resultListFanLX = new QListWidget(body);
-    resultListFanLX->setMinimumHeight(140);
-    resultHintFanLX = kit::hintLabel(body);
+    crossCard->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("另一个服务"), targetServiceComboFanLX, crossCard));
+    crossCard->bodyLayout()->addWidget(recommendButtonFanLX);
+    crossCard->bodyLayout()->addWidget(crossCommonButtonFanLX);
 
-    auto *first = new QHBoxLayout();
-    first->addWidget(commonPeerEditFanLX, 1);
-    first->addWidget(commonButtonFanLX);
-    auto *second = new QHBoxLayout();
-    second->addWidget(new QLabel(QStringLiteral("另一个服务"), body));
-    second->addWidget(targetServiceComboFanLX);
-    second->addWidget(recommendButtonFanLX);
-    second->addWidget(crossCommonButtonFanLX);
-    second->addStretch(1);
+    auto *left = new QWidget(page);
+    left->setMinimumWidth(0);
+    left->setMaximumWidth(420);
+    left->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    auto *leftLayout = new QVBoxLayout(left);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(16);
+    leftLayout->addWidget(sameCard);
+    leftLayout->addWidget(crossCard);
 
-    auto *layout = new QVBoxLayout(body);
-    layout->addLayout(first);
-    layout->addLayout(second);
-    layout->addWidget(resultListFanLX, 1);
-    layout->addWidget(resultHintFanLX);
+    auto *rightCard = new FriendCardFanLX(QString(), page);
+    resultTitleFanLX = new QLabel(QStringLiteral("查询结果"), rightCard);
+    resultTitleFanLX->setObjectName(QStringLiteral("friendResultTitleFanLX"));
+    resultTitleFanLX->setWordWrap(true);
+    resultListFanLX = new QListWidget(rightCard);
+    resultListFanLX->setMinimumHeight(280);
+    resultEmptyFanLX = new FriendEmptyStateFanLX(QStringLiteral("还没有查询"),
+                                                QStringLiteral("填写同一服务的号码，或选择另一个服务后再查询。"),
+                                                rightCard);
+    resultStackFanLX = new QStackedWidget(rightCard);
+    resultStackFanLX->setMinimumHeight(280);
+    resultStackFanLX->addWidget(resultListFanLX);
+    resultStackFanLX->addWidget(resultEmptyFanLX);
+    resultStackFanLX->setCurrentWidget(resultEmptyFanLX);
+    resultHintFanLX = kit::hintLabel(rightCard);
+    rightCard->bodyLayout()->addWidget(resultTitleFanLX);
+    rightCard->bodyLayout()->addWidget(resultStackFanLX);
+    rightCard->bodyLayout()->addWidget(resultHintFanLX);
 
-    // 查询结果只是"候选"：领域不会自动建立好友关系，必须切到目标服务显式添加。
-    const auto showResult = [this](const QStringList &rows, const QString &note) {
-        resultListFanLX->clear();
-        resultListFanLX->addItems(rows);
-        if (rows.isEmpty())
-            resultListFanLX->addItem(QStringLiteral("（没有匹配结果）"));
-        resultHintFanLX->setText(note);
-    };
-    connect(commonButtonFanLX, &QPushButton::clicked, this, [this, showResult] {
-        const auto rows = controllerFanLX->queryCommonFriends(commonPeerEditFanLX->text().trimmed());
-        showResult(rows, controllerFanLX->lastMessage());
+    auto *split = new QHBoxLayout();
+    split->setSpacing(16);
+    split->addWidget(left, 0, Qt::AlignTop);
+    split->addWidget(rightCard, 1, Qt::AlignTop);
+    layout->addLayout(split);
+
+    connect(commonButtonFanLX, &QPushButton::clicked, this, [this] {
+        const auto peer = commonPeerEditFanLX->text().trimmed();
+        const auto rows = controllerFanLX->queryCommonFriends(peer);
+        const auto note = controllerFanLX->lastMessage();
+        showQueryResultFanLX(rows, note,
+                             peer.isEmpty() ? QStringLiteral("同服务共同好友")
+                                            : QStringLiteral("与 %1 的同服务共同好友").arg(peer),
+                             friendQuerySucceededFanLX(note));
     });
-    connect(recommendButtonFanLX, &QPushButton::clicked, this, [this, showResult] {
+    connect(commonPeerEditFanLX, &QLineEdit::returnPressed, commonButtonFanLX, &QPushButton::click);
+    connect(recommendButtonFanLX, &QPushButton::clicked, this, [this] {
         const auto rows = controllerFanLX->queryCrossServiceRecommend(targetServiceComboFanLX->currentText());
-        showResult(rows, controllerFanLX->lastMessage() +
-                             QStringLiteral("；推荐只是候选，需在「添加好友」里发送申请。"));
+        const auto note = controllerFanLX->lastMessage();
+        showQueryResultFanLX(rows,
+                             note + QStringLiteral("；推荐只是候选，需在「添加好友」里发送申请。"),
+                             QStringLiteral("可在当前服务添加的好友"), friendQuerySucceededFanLX(note));
     });
-    connect(crossCommonButtonFanLX, &QPushButton::clicked, this, [this, showResult] {
+    connect(crossCommonButtonFanLX, &QPushButton::clicked, this, [this] {
         const auto rows = controllerFanLX->queryCrossServiceCommon(targetServiceComboFanLX->currentText());
-        showResult(rows, controllerFanLX->lastMessage());
+        const auto note = controllerFanLX->lastMessage();
+        showQueryResultFanLX(rows, note, QStringLiteral("跨服务共同好友"), friendQuerySucceededFanLX(note));
     });
-    return body;
+    return page;
 }
 
 QString FriendPageFanLX::selectedPeerFanLX() const {
@@ -929,12 +960,37 @@ void FriendPageFanLX::openCommonQueryFanLX(const QString &peer) {
 
 void FriendPageFanLX::showQueryResultFanLX(const QStringList &rows, const QString &note, const QString &title,
                                           bool success) {
-    Q_UNUSED(title);
+    if (!resultListFanLX)
+        return;
     resultListFanLX->clear();
+    if (!resultStackFanLX || !resultEmptyFanLX || !resultTitleFanLX) {
+        resultListFanLX->addItems(rows);
+        if (resultHintFanLX)
+            resultHintFanLX->setText(note);
+        return;
+    }
+    if (!success) {
+        resultTitleFanLX->setText(title.isEmpty() ? QStringLiteral("查询没有完成") : title);
+        resultEmptyFanLX->setError(true);
+        resultEmptyFanLX->setText(note.isEmpty() ? QStringLiteral("查询没有完成") : note, QString());
+        resultStackFanLX->setCurrentWidget(resultEmptyFanLX);
+        if (resultHintFanLX)
+            resultHintFanLX->clear();
+        return;
+    }
+    resultTitleFanLX->setText(QStringLiteral("%1 · %2 人").arg(title).arg(rows.size()));
+    if (rows.isEmpty()) {
+        resultEmptyFanLX->setError(false);
+        resultEmptyFanLX->setText(QStringLiteral("没有共同好友"), note);
+        resultStackFanLX->setCurrentWidget(resultEmptyFanLX);
+        if (resultHintFanLX)
+            resultHintFanLX->clear();
+        return;
+    }
     resultListFanLX->addItems(rows);
-    if (rows.isEmpty() && success)
-        resultListFanLX->addItem(QStringLiteral("（没有共同好友）"));
-    resultHintFanLX->setText(note);
+    resultStackFanLX->setCurrentWidget(resultListFanLX);
+    if (resultHintFanLX)
+        resultHintFanLX->setText(note);
 }
 
 void FriendPageFanLX::updateRequestActionsFanLX() {
