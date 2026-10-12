@@ -57,6 +57,7 @@ class FriendPageFanLX : public QWidget {
     void openCommonQueryFanLX(const QString &peer);
     void showQueryResultFanLX(const QStringList &rows, const QString &note, const QString &title, bool success);
     void updateRequestActionsFanLX();
+    void setRequestSegmentFanLX(int index);
     void syncFriendActionsFanLX();
     FriendPageHeaderFanLX *installFriendHeaderFanLX(int index, const QString &title);
 
@@ -85,7 +86,19 @@ class FriendPageFanLX : public QWidget {
     QPushButton *acceptButtonFanLX = nullptr;
     QPushButton *rejectButtonFanLX = nullptr;
     QPushButton *cancelButtonFanLX = nullptr;
+    QPushButton *requestsRefreshButtonFanLX = nullptr;
     QLabel *requestsHintFanLX = nullptr;
+    QStackedWidget *requestStackFanLX = nullptr;
+    QPushButton *incomingSegmentFanLX = nullptr;
+    QPushButton *outgoingSegmentFanLX = nullptr;
+    QPushButton *temporarySegmentFanLX = nullptr;
+    QStackedWidget *incomingStackFanLX = nullptr;
+    QStackedWidget *outgoingStackFanLX = nullptr;
+    QStackedWidget *temporaryStackFanLX = nullptr;
+    FriendEmptyStateFanLX *incomingEmptyFanLX = nullptr;
+    FriendEmptyStateFanLX *outgoingEmptyFanLX = nullptr;
+    FriendEmptyStateFanLX *temporaryEmptyFanLX = nullptr;
+    QLabel *temporaryNoteFanLX = nullptr;
 
     QLineEdit *remarkPeerEditFanLX = nullptr;
     QLineEdit *remarkEditFanLX = nullptr;

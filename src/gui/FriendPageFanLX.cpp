@@ -76,15 +76,6 @@ QString selectedPeerOfFanLX(const QListWidget *list) {
     return item ? peerOfRowFanLX(item->text()) : QString();
 }
 
-void fillListFanLX(QListWidget *list, const QStringList &rows, const QString &placeholder) {
-    list->blockSignals(true);
-    list->clear();
-    list->addItems(rows);
-    if (rows.isEmpty())
-        list->addItem(placeholder);
-    list->blockSignals(false);
-}
-
 // 成功文案一定同时带人数和查询种类。校验失败（例如空号码）不能当成「没有共同好友」。
 bool friendQuerySucceededFanLX(const QString &message) {
     return message.contains(QStringLiteral("人")) &&
@@ -163,6 +154,10 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
     kit::addSubPage(stackFanLX, QStringLiteral("共同好友查询"), buildQueryBodyFanLX());
     kit::addSubPage(stackFanLX, QStringLiteral("好友申请与临时会话"), buildRequestsBodyFanLX());
     installFriendHeaderFanLX(kAddPage, QStringLiteral("添加好友"));
+    if (auto *header = installFriendHeaderFanLX(kRequestsPage, QStringLiteral("好友申请"))) {
+        if (requestsRefreshButtonFanLX)
+            header->trailingLayout()->addWidget(requestsRefreshButtonFanLX);
+    }
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(6, 6, 6, 6);
@@ -419,42 +414,67 @@ QWidget *FriendPageFanLX::buildAddBodyFanLX() {
 }
 
 QWidget *FriendPageFanLX::buildRequestsBodyFanLX() {
-    auto *body = new QWidget();
-    incomingListFanLX = new QListWidget(body);
-    outgoingListFanLX = new QListWidget(body);
-    temporaryListFanLX = new QListWidget(body);
-    acceptButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("同意"), body);
-    rejectButtonFanLX = friendDangerButtonFanLX(QStringLiteral("拒绝"), body);
-    cancelButtonFanLX = friendDangerButtonFanLX(QStringLiteral("撤回"), body);
-    auto *refresh = friendSecondaryButtonFanLX(QStringLiteral("刷新"), body);
-    requestsHintFanLX = kit::hintLabel(body);
+    QVBoxLayout *layout = nullptr;
+    auto *page = friendSubpageShellFanLX(&layout, 1040);
 
-    auto *incomingBox = new QGroupBox(QStringLiteral("收到的申请（对方 ｜ 附言 ｜ 时间）"), body);
-    auto *incomingLayout = new QVBoxLayout(incomingBox);
-    incomingLayout->addWidget(incomingListFanLX);
+    incomingSegmentFanLX = friendSegmentButtonFanLX(QStringLiteral("收到的申请"), page);
+    outgoingSegmentFanLX = friendSegmentButtonFanLX(QStringLiteral("我发出的"), page);
+    temporarySegmentFanLX = friendSegmentButtonFanLX(QStringLiteral("临时会话"), page);
+    auto *segments = new QHBoxLayout();
+    segments->setSpacing(4);
+    segments->addWidget(incomingSegmentFanLX);
+    segments->addWidget(outgoingSegmentFanLX);
+    segments->addWidget(temporarySegmentFanLX);
+    segments->addStretch(1);
+
+    requestsHintFanLX = kit::hintLabel(page);
+    requestsRefreshButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("刷新"), page);
+
+    const auto makePane = [page](QListWidget **listOut, FriendEmptyStateFanLX **emptyOut, QStackedWidget **stackOut,
+                                 const QString &emptyText) {
+        auto *pane = new QWidget(page);
+        auto *paneLayout = new QVBoxLayout(pane);
+        paneLayout->setContentsMargins(0, 0, 0, 0);
+        paneLayout->setSpacing(8);
+        auto *list = new QListWidget(pane);
+        auto *empty = new FriendEmptyStateFanLX(emptyText, QString(), pane);
+        auto *stack = new QStackedWidget(pane);
+        stack->setMinimumHeight(280);
+        stack->addWidget(list);
+        stack->addWidget(empty);
+        paneLayout->addWidget(stack, 1);
+        *listOut = list;
+        *emptyOut = empty;
+        *stackOut = stack;
+        return pane;
+    };
+    auto *incomingPane = makePane(&incomingListFanLX, &incomingEmptyFanLX, &incomingStackFanLX,
+                                  QStringLiteral("（没有待处理的申请）"));
+    auto *outgoingPane = makePane(&outgoingListFanLX, &outgoingEmptyFanLX, &outgoingStackFanLX,
+                                  QStringLiteral("（没有等待中的申请）"));
+    auto *temporaryPane = makePane(&temporaryListFanLX, &temporaryEmptyFanLX, &temporaryStackFanLX,
+                                   QStringLiteral("（没有临时会话）"));
+    acceptButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("同意"), incomingPane);
+    rejectButtonFanLX = friendDangerButtonFanLX(QStringLiteral("拒绝"), incomingPane);
+    cancelButtonFanLX = friendDangerButtonFanLX(QStringLiteral("撤回"), outgoingPane);
     auto *incomingButtons = new QHBoxLayout();
     incomingButtons->addStretch(1);
     incomingButtons->addWidget(acceptButtonFanLX);
     incomingButtons->addWidget(rejectButtonFanLX);
-    incomingLayout->addLayout(incomingButtons);
+    qobject_cast<QVBoxLayout *>(incomingPane->layout())->addLayout(incomingButtons);
+    qobject_cast<QVBoxLayout *>(outgoingPane->layout())->addWidget(cancelButtonFanLX, 0, Qt::AlignRight);
+    temporaryNoteFanLX = new QLabel(temporaryPane);
+    temporaryNoteFanLX->setObjectName(QStringLiteral("friendTemporaryNoteFanLX"));
+    qobject_cast<QVBoxLayout *>(temporaryPane->layout())->insertWidget(0, temporaryNoteFanLX);
 
-    auto *outgoingBox = new QGroupBox(QStringLiteral("我发出的申请（等待对方同意）"), body);
-    auto *outgoingLayout = new QVBoxLayout(outgoingBox);
-    outgoingLayout->addWidget(outgoingListFanLX);
-    outgoingLayout->addWidget(cancelButtonFanLX, 0, Qt::AlignRight);
-
-    auto *temporaryBox = new QGroupBox(QStringLiteral("临时会话（非好友，每方向限额）"), body);
-    auto *temporaryLayout = new QVBoxLayout(temporaryBox);
-    temporaryLayout->addWidget(temporaryListFanLX);
-
-    auto *layout = new QVBoxLayout(body);
-    auto *top = new QHBoxLayout();
-    top->addWidget(requestsHintFanLX, 1);
-    top->addWidget(refresh);
-    layout->addLayout(top);
-    layout->addWidget(incomingBox, 1);
-    layout->addWidget(outgoingBox, 1);
-    layout->addWidget(temporaryBox, 1);
+    requestStackFanLX = new QStackedWidget(page);
+    requestStackFanLX->addWidget(incomingPane);
+    requestStackFanLX->addWidget(outgoingPane);
+    requestStackFanLX->addWidget(temporaryPane);
+    layout->addLayout(segments);
+    layout->addWidget(requestsHintFanLX);
+    layout->addWidget(requestStackFanLX);
+    setRequestSegmentFanLX(0);
 
     const auto act = [this](QListWidget *list, bool (DomainControllerFanLX::*op)(const QString &)) {
         const auto peer = selectedPeerOfFanLX(list);
@@ -473,8 +493,11 @@ QWidget *FriendPageFanLX::buildRequestsBodyFanLX() {
             [this, act] { act(incomingListFanLX, &DomainControllerFanLX::rejectFriendRequest); });
     connect(cancelButtonFanLX, &QPushButton::clicked, this,
             [this, act] { act(outgoingListFanLX, &DomainControllerFanLX::cancelFriendRequest); });
-    connect(refresh, &QPushButton::clicked, this, &FriendPageFanLX::refreshRequestsFanLX);
-    return body;
+    connect(requestsRefreshButtonFanLX, &QPushButton::clicked, this, &FriendPageFanLX::refreshRequestsFanLX);
+    connect(incomingSegmentFanLX, &QPushButton::clicked, this, [this] { setRequestSegmentFanLX(0); });
+    connect(outgoingSegmentFanLX, &QPushButton::clicked, this, [this] { setRequestSegmentFanLX(1); });
+    connect(temporarySegmentFanLX, &QPushButton::clicked, this, [this] { setRequestSegmentFanLX(2); });
+    return page;
 }
 
 void FriendPageFanLX::refreshRequestsFanLX() {
@@ -494,31 +517,88 @@ void FriendPageFanLX::refreshRequestsFanLX() {
         requestBadgeFanLX->show();
     };
     requestsNavButtonFanLX->setText(QStringLiteral("好友申请"));
-    if (!view.reachable) {
-        fillListFanLX(incomingListFanLX, {}, QStringLiteral("（服务端不可达）"));
-        fillListFanLX(outgoingListFanLX, {}, QStringLiteral("（服务端不可达）"));
-        fillListFanLX(temporaryListFanLX, {}, QStringLiteral("（服务端不可达）"));
-        requestsHintFanLX->setText(controllerFanLX->lastMessage());
-        showBadge(0);
-        pickRequestSegmentFanLX = false;
-        updateRequestActionsFanLX();
-        return;
+    const auto fillPane = [&](QListWidget *list, FriendEmptyStateFanLX *empty, QStackedWidget *stack,
+                              const QStringList &rows, const QString &emptyText) {
+        if (!list || !empty || !stack)
+            return;
+        list->blockSignals(true);
+        list->clear();
+        if (!view.reachable) {
+            empty->setError(true);
+            empty->setText(QStringLiteral("（服务端不可达）"), controllerFanLX->lastMessage());
+            stack->setCurrentWidget(empty);
+        } else if (rows.isEmpty()) {
+            empty->setError(false);
+            empty->setText(emptyText, QString());
+            stack->setCurrentWidget(empty);
+        } else {
+            list->addItems(rows);
+            stack->setCurrentWidget(list);
+        }
+        list->blockSignals(false);
+        list->viewport()->update();
+    };
+    const auto segmentText = [&](const QString &name, int count) {
+        return view.reachable ? QStringLiteral("%1（%2）").arg(name).arg(count)
+                              : QStringLiteral("%1（–）").arg(name);
+    };
+    fillPane(incomingListFanLX, incomingEmptyFanLX, incomingStackFanLX, view.incoming,
+             QStringLiteral("（没有待处理的申请）"));
+    fillPane(outgoingListFanLX, outgoingEmptyFanLX, outgoingStackFanLX, view.outgoing,
+             QStringLiteral("（没有等待中的申请）"));
+    fillPane(temporaryListFanLX, temporaryEmptyFanLX, temporaryStackFanLX, view.temporary,
+             QStringLiteral("（没有临时会话）"));
+    if (incomingSegmentFanLX)
+        incomingSegmentFanLX->setText(segmentText(QStringLiteral("收到的申请"), view.incoming.size()));
+    if (outgoingSegmentFanLX)
+        outgoingSegmentFanLX->setText(segmentText(QStringLiteral("我发出的"), view.outgoing.size()));
+    if (temporarySegmentFanLX)
+        temporarySegmentFanLX->setText(segmentText(QStringLiteral("临时会话"), view.temporary.size()));
+    if (temporaryNoteFanLX) {
+        temporaryNoteFanLX->setVisible(view.reachable);
+        if (view.reachable)
+            temporaryNoteFanLX->setText(QStringLiteral("每方向最多 %1 条").arg(view.limit));
     }
-    fillListFanLX(incomingListFanLX, view.incoming, QStringLiteral("（没有待处理的申请）"));
-    fillListFanLX(outgoingListFanLX, view.outgoing, QStringLiteral("（没有等待中的申请）"));
-    fillListFanLX(temporaryListFanLX, view.temporary, QStringLiteral("（没有临时会话）"));
-    requestsHintFanLX->setText(QStringLiteral("%1 · 收到 %2 条、发出 %3 条待处理申请；临时会话每方向最多 %4 条")
-                                   .arg(controllerFanLX->currentService())
-                                   .arg(view.incoming.size())
-                                   .arg(view.outgoing.size())
-                                   .arg(view.limit));
-    showBadge(view.incoming.size());
-    pickRequestSegmentFanLX = false;
+    if (view.reachable) {
+        requestsHintFanLX->setText(QStringLiteral("%1 · 收到 %2 条、发出 %3 条待处理申请；临时会话每方向最多 %4 条")
+                                       .arg(controllerFanLX->currentService())
+                                       .arg(view.incoming.size())
+                                       .arg(view.outgoing.size())
+                                       .arg(view.limit));
+    } else {
+        requestsHintFanLX->setText(controllerFanLX->lastMessage());
+    }
+    showBadge(view.reachable ? view.incoming.size() : 0);
+    int segment = requestStackFanLX ? requestStackFanLX->currentIndex() : 0;
+    if (pickRequestSegmentFanLX) {
+        pickRequestSegmentFanLX = false;
+        segment = 0;
+        if (view.reachable) {
+            if (!view.incoming.isEmpty())
+                segment = 0;
+            else if (!view.temporary.isEmpty())
+                segment = 2;
+            else if (!view.outgoing.isEmpty())
+                segment = 1;
+        }
+    }
+    setRequestSegmentFanLX(segment);
     updateRequestActionsFanLX();
-    if (incomingListFanLX)
-        incomingListFanLX->viewport()->update();
-    if (temporaryListFanLX)
-        temporaryListFanLX->viewport()->update();
+}
+
+void FriendPageFanLX::setRequestSegmentFanLX(int index) {
+    if (!requestStackFanLX)
+        return;
+    if (index < 0 || index > 2)
+        index = 0;
+    requestStackFanLX->setCurrentIndex(index);
+    QPushButton *buttons[] = {incomingSegmentFanLX, outgoingSegmentFanLX, temporarySegmentFanLX};
+    for (int i = 0; i < 3; ++i) {
+        if (!buttons[i])
+            continue;
+        buttons[i]->setProperty("active", i == index ? QStringLiteral("true") : QStringLiteral("false"));
+        polishPropertyFanLX(buttons[i]);
+    }
 }
 
 void FriendPageFanLX::refreshCandidatesFanLX() {
