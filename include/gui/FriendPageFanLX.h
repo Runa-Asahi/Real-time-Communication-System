@@ -74,6 +74,8 @@ class FriendPageFanLX : public QWidget {
     QPushButton *addButtonFanLX = nullptr;
     QComboBox *sourceServiceComboFanLX = nullptr;
     QListWidget *candidateListFanLX = nullptr;
+    QStackedWidget *candidateStackFanLX = nullptr;
+    FriendEmptyStateFanLX *candidateEmptyFanLX = nullptr;
     QPushButton *addFromServiceButtonFanLX = nullptr;
     QLabel *addHintFanLX = nullptr;
 
