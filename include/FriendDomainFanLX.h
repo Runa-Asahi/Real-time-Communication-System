@@ -20,6 +20,7 @@
 // 兼容入口：好友域的全部类型。按课程要求，每个类各自独立存放于 include/friend/ 下。
 #include "friend/FriendshipFanLX.h"
 #include "friend/FriendDirectoryFanLX.h"
+#include "friend/FriendDirectorySetFanLX.h"
 #include "friend/IdentityResolverFanLX.h"
 #include "friend/FriendServiceFanLX.h"
 #include "friend/FriendSnapshotFanLX.h"

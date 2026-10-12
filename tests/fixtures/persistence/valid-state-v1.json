@@ -923,6 +923,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "樊陆旭",
+      "password": "pw-2026001",
       "userId": "U1"
     },
     {
@@ -930,6 +931,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学10",
+      "password": "pw-20260010",
       "userId": "U10"
     },
     {
@@ -937,6 +939,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学11",
+      "password": "pw-20260011",
       "userId": "U11"
     },
     {
@@ -944,6 +947,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学12",
+      "password": "pw-20260012",
       "userId": "U12"
     },
     {
@@ -951,6 +955,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学2",
+      "password": "pw-2026002",
       "userId": "U2"
     },
     {
@@ -958,6 +963,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学3",
+      "password": "pw-2026003",
       "userId": "U3"
     },
     {
@@ -965,6 +971,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学4",
+      "password": "pw-2026004",
       "userId": "U4"
     },
     {
@@ -972,6 +979,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学5",
+      "password": "pw-2026005",
       "userId": "U5"
     },
     {
@@ -979,6 +987,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学6",
+      "password": "pw-2026006",
       "userId": "U6"
     },
     {
@@ -986,6 +995,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学7",
+      "password": "pw-2026007",
       "userId": "U7"
     },
     {
@@ -993,6 +1003,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学8",
+      "password": "pw-2026008",
       "userId": "U8"
     },
     {
@@ -1000,6 +1011,7 @@
       "birthDate": "2005-01-01",
       "location": "吉林",
       "nickname": "同学9",
+      "password": "pw-2026009",
       "userId": "U9"
     }
   ],

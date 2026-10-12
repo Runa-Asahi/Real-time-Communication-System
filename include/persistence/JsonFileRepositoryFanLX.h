@@ -25,4 +25,7 @@ class JsonFileRepositoryFanLX final : public RepositoryFanLX {
     const std::filesystem::path &directory() const noexcept {
         return directoryFanLX;
     }
+    // 主快照文件是否与"最近一次加载/提交的字节"不同。
+    // 供"服务端无状态"的读穿查询使用：只有真的变了才重新解析，避免每次调用都读盘。
+    bool changedOnDisk() const;
 };

@@ -59,8 +59,19 @@ LoadResultFanLX JsonFileRepositoryFanLX::load() {
             return {statusFanLX = LoadStatusFanLX::UncommittedOnly, {}, "存在未提交文件，需要显式初始化"};
     return {statusFanLX = LoadStatusFanLX::Empty, {}, "空目录，需要显式初始化"};
 }
-void JsonFileRepositoryFanLX::initialize() {
-    if (closedFanLX ||
+// 主快照是否与"最近一次加载/提交的字节"不同。
+// 只做一次读盘比较：调用方（服务端读穿查询）据此决定要不要重新解析，
+// 因此正常情况下每次调用只多一次文件读取，不会重复构建领域对象。
+bool JsonFileRepositoryFanLX::changedOnDisk() const {
+    if (closedFanLX)
+        return false;
+    const auto main = directoryFanLX / L"state.json";
+    if (!std::filesystem::exists(main))
+        return !committedBytesFanLX.empty();
+    return AtomicFileWriterFanLX::read(main) != committedBytesFanLX;
+}
+
+void JsonFileRepositoryFanLX::initialize() {    if (closedFanLX ||
         (statusFanLX != LoadStatusFanLX::Empty && statusFanLX != LoadStatusFanLX::UncommittedOnly))
         throw PersistenceErrorFanLX(PersistenceErrorCodeFanLX::RecoveryRequired, "当前状态不允许初始化");
     if (std::filesystem::exists(directoryFanLX / L"state.json") ||

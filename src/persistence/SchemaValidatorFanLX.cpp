@@ -75,17 +75,24 @@ void SchemaValidatorFanLX::validate(const PlatformSnapshotFanLX &s) {
         requireFanLX(u.nickname.size() <= 4096 && u.location.size() <= 4096, "资料过长");
         requireFanLX(dateFanLX(u.birthDate) && dateFanLX(u.applyDate) && u.birthDate <= u.applyDate,
                      "用户日期不合法");
+        // 密码是登录唯一凭据：空密码的账号库里没有任何账号可以登录，属于无效状态。
+        // 旧快照（本次改造前写出的文件）没有 password 字段，加载到这里会命中这条错误，
+        // 提示用户重新 --init-demo，而不是让程序后面用"密码永远是错的"来表现故障。
+        requireFanLX(!u.password.empty(), "用户缺少登录密码（旧数据请重新 --init-demo 初始化）");
+        requireFanLX(u.password.size() <= 4096, "密码过长");
     }
     for (const auto &a : s.accounts) {
         idFanLX(a.accountId);
         requireFanLX(users.count(a.userId) != 0, "账号用户不存在");
         requireFanLX(a.service == ServiceTypeFanLX::QQ || a.service == ServiceTypeFanLX::Wechat ||
-                         a.service == ServiceTypeFanLX::Weibo,
+                         a.service == ServiceTypeFanLX::Weibo || a.service == ServiceTypeFanLX::WeiX,
                      "服务错误");
         requireFanLX(accounts.emplace(RefKeyFanLX{a.service, a.accountId}, a).second &&
                          owned.emplace(std::make_pair(a.userId, a.service), a).second,
                      "账号重复");
         requireFanLX(a.service != ServiceTypeFanLX::Wechat || !a.sharedId, "微信不能使用共享 ID 标记");
+        // 微X 是上层账号，不参与"共享号码"语义（共享号码说的是 QQ 与微博这一对下级服务）。
+        requireFanLX(a.service != ServiceTypeFanLX::WeiX || !a.sharedId, "微X 不能使用共享 ID 标记");
     }
     for (const auto &user : users) {
         auto q = owned.find({user, ServiceTypeFanLX::QQ}), w = owned.find({user, ServiceTypeFanLX::Weibo});

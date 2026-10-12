@@ -101,7 +101,7 @@ int main() {
                 [&](auto stage) { if (failCommit && stage == CommitStageFanLX::BeforePublish)
                                      throw std::runtime_error("模拟写盘失败"); });
             app.initialize(); app.importInitial(demoSeedFanLX());
-            app.login(owner); app.login(admin); app.login(fourth);
+            app.login(owner, demoPasswordFanLX(owner.accountId)); app.login(admin, demoPasswordFanLX(admin.accountId)); app.login(fourth, demoPasswordFanLX(fourth.accountId));
             const AccountRefFanLX wxOwner{ServiceTypeFanLX::Wechat, "wx_2026001"};
             app.confirmLogin(owner, wxOwner);
             assert(app.queryCrossService(owner, wxOwner) == std::vector<std::string>{"wx_2026002"});
@@ -137,7 +137,7 @@ int main() {
             assert(app.queryFriendAccounts(owner).empty());
             app.logout(owner);
             rejectedFanLX([&] { app.queryFriendAccounts(owner); });
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             const auto cached = app.queryGroupMembers(owner, qq);
             app.setQueryCacheEnabled(false);
             assert(app.queryGroupMembers(owner, qq) == cached);

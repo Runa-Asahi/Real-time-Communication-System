@@ -4,6 +4,13 @@
 
 > **证据目录说明（2026-09-23 清理）**：本文中的 `.artifacts/...` 是当时存放证据的临时目录，现已连同其它临时产物一并删除。下文的命令与结论仍然有效——把 `.artifacts/xxx` 换成任意构建目录即可复现；需要重新生成发布级证据请运行 `scripts/verify-release.ps1`，它会在独立目录下构建、跑全量 CTest 并保存日志与 SHA-256 清单。
 
+> **2026-09-30 凭据改造对本记录的补充**：users[] 新增明文登录密码字段 `password`（约束见 [data-format.md](data-format.md)），
+> 因此下文 T11a 的「全字段比较」现在也覆盖密码，夹具 [valid-state-v1.json](../tests/fixtures/persistence/valid-state-v1.json)
+> 已按新字段重新生成（users[] 中可见各演示账号的密码（现统一为 `123`；该 fixture 生成于改动之前，仍为 `pw-...`））。T11b 的结论不受影响：
+> 登录态从不写盘，与新增的持久密码字段是两件不同的事。改造前初始化的旧快照因缺 password 被校验器拒绝，
+> 报 `用户缺少登录密码（旧数据请重新 --init-demo 初始化）`；迁移＝删除该数据目录后重新 `--init-demo`，
+> 程序不就地补字段。
+
 ## 环境与构建
 
 | 项目 | 实测值 |
@@ -37,11 +44,11 @@ ctest --test-dir .artifacts/build-release --output-on-failure
 
 测试源为 [persistence_tests.cpp](../tests/persistence_tests.cpp)。每次创建独立的系统临时目录 fanlx-persistence-进程号-时钟值；正常通过时清理该目录，异常时输出并保留证据。断言导致的进程终止可能来不及打印目录，此时可按测试进程号定位。不会修改默认 data。
 
-通用前置状态由 initialize 加 importInitial 生成：第 1 代为空库，第 2 代包含 12 名用户、36 个服务账号、12 组绑定、QQ/微信各 6 个群、双方私有中文备注、子群和待处理流程。测试时钟固定为 2026-09-14T12:00:00Z；真实演示使用系统 UTC。完整可解析样例为 [valid-state-v1.json](../tests/fixtures/persistence/valid-state-v1.json)。
+通用前置状态由 initialize 加 importInitial 生成：第 1 代为空库，第 2 代包含 12 名用户（各带演示登录密码，2026-10-10 起统一为 `123`）、36 个服务账号、12 组绑定、QQ/微信各 6 个群、双方私有中文备注、子群和待处理流程。测试时钟固定为 2026-09-14T12:00:00Z；真实演示使用系统 UTC。完整可解析样例为 [valid-state-v1.json](../tests/fixtures/persistence/valid-state-v1.json)。
 
 | 对应条款 | 输入和检查内容 | 实际结果 |
 | --- | --- | --- |
-| T11a、R12/R21 | 编码→写盘→关闭→重建，比较完整 JSON，包括账号/开通/绑定/私有备注/同号群/角色/时间/序号/流程/子群 | 全字段相等，中文内容保留 |
+| T11a、R12/R21 | 编码→写盘→关闭→重建，比较完整 JSON，包括账号/开通/绑定/私有备注/同号群/角色/时间/序号/流程/子群/用户资料与密码 | 全字段相等，中文内容保留 |
 | T11b | 在中文目录中用 CreateProcessW 启动独立进程；此前已登录、切换并保存 | 新进程加载成功，登录态为空，当前模式保持 |
 | T11c、S05 §7.4 | QQ→微信保存重启→QQ；保留休眠 Admin，退群后不复活 | 模式及成员符合规则，原 T06—T10 无回归 |
 | T11d | 多次业务事务后对比群与子群指针；审批新成员后退出；转让和切换 | 存续外壳地址相同，序号空洞与 nextJoinOrder 保留 |

@@ -25,7 +25,16 @@ compile_commands.json
 /data/*.json.prev
 /data/*.lock
 
-# ---- IM 令牌总表（含口令，不得入库）----
+# ---- 客户端 GUI 默认数据根（2026-10-10 从 build/ 移出）----
+# 此前它位于 build/data-im-gui，仅靠上面的 /build/ 才被忽略。但 /build/ 的语义是
+# 「可随时删除重建」，全量重建会连聊天记录（chat.db / state.json）一起抹掉，
+# 且不受 git 保护。现已移到项目根，与 data-im-a / data-im-b / data-im-server 平级，
+# 由上面的 /data-*/ 规则统一覆盖。此条是显式冗余声明，防止规则被误改。
+/data-im-gui/
+
+# ---- 登录凭据载体（明文口令写在 data-*/state.json 的 users[].password 里）----
+# 旧实现的独立令牌总表已随「用户名 + 密码」改造删除；这里保留忽略规则，
+# 防止历史工作目录里遗留的令牌文件被误提交。
 /im-tokens.json
 
 # ---- 编译与本机产物 ----

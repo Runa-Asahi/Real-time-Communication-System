@@ -1,4 +1,5 @@
 #pragma once
+#include "account/CredentialRejectedFanLX.h"
 #include "account/ServiceAccountFanLX.h"
 #include "account/ServiceNotConfirmedFanLX.h"
 #include "account/ServiceNotSubscribedFanLX.h"
@@ -73,6 +74,40 @@ class AccountManagerFanLX {
         return it != bindingsFanLX.end() && it->second == leftKey;
     }
 
+    // 工具函数：某用户的微X账号 ID（没有则返回空串）。微X 是上层账号，
+    // 下级服务的号码默认与它对齐，因此这里被多处复用。
+    std::string weixAccountIdOfFanLX(const std::string &user) const {
+        const auto *found = findAccount(user, ServiceTypeFanLX::WeiX);
+        return found ? found->accountId : std::string{};
+    }
+
+    // 工具函数：按「归属用户 + 平台」取可变账号指针（内部换算用，找不到返回 nullptr）。
+    ServiceAccountFanLX *mutableAccountFanLX(const std::string &user, ServiceTypeFanLX service) {
+        auto it = accountsFanLX.find(keyFanLX(user, service));
+        return it == accountsFanLX.end() ? nullptr : &it->second;
+    }
+
+    // 工具函数：重算某用户 QQ / 微博两个账号的"共享号码"标记。
+    // 课程约定 QQ 与微博共用同一个号码：两边都在时必须同号（否则抛异常，宁可拒绝也不写出
+    // 一份自相矛盾的账号库），此时两边都标 sharedId；只有一边时，号码与微X号相同即视为共享
+    // ——微X号是本人的统一号码，QQ/微博沿用它就是"同号"。
+    void syncSharedFlagsFanLX(const std::string &user) {
+        auto *qq = mutableAccountFanLX(user, ServiceTypeFanLX::QQ);
+        auto *weibo = mutableAccountFanLX(user, ServiceTypeFanLX::Weibo);
+        const auto weix = weixAccountIdOfFanLX(user);
+        if (qq && weibo) {
+            if (qq->accountId != weibo->accountId)
+                throw std::runtime_error("QQ 与微博必须共用同一个号码（课程约定：两者共享 ID）");
+            qq->sharedId = true;
+            weibo->sharedId = true;
+            return;
+        }
+        if (qq)
+            qq->sharedId = !weix.empty() && qq->accountId == weix;
+        if (weibo)
+            weibo->sharedId = !weix.empty() && weibo->accountId == weix;
+    }
+
     // 登录核心：把 currentKey 置为登录态；confirmOthers 时联动该用户其它已开通平台。
     // user 仅用于把遍历范围限定在"同一用户的订阅键"上，不构成登录依据。
     void loginCoreFanLX(const std::string &user, const std::string &currentKey, bool confirmOthers) {
@@ -82,12 +117,18 @@ class AccountManagerFanLX {
         loggedInFanLX.insert(currentKey);
         if (!confirmOthers)
             return;
+        // 微X 是 QQ/微信/微博 的上层账号：登微X（并简单确认）就是"本人已开通的下级服务一并登录"，
+        // 不再要求下级之间同号或互相绑定——授权来源就是这一次微X登录本身。
+        const bool umbrella =
+            accountsFanLX.at(currentKey).service == ServiceTypeFanLX::WeiX;
         for (const auto &item : subscriptionsFanLX) // 只遍历已开通的平台
         {
             if (item == currentKey || item.rfind(user + "|", 0) != 0) // 跳过自身与他人的订阅键
                 continue;
-            // 只有"同号"或"显式绑定"才联动；"同一个人"本身不是联动理由
-            if (sameSharedAccountFanLX(item, currentKey) || boundFanLX(item, currentKey))
+            if (umbrella)
+                loggedInFanLX.insert(item);
+            // 下级服务之间：只有"同号"或"显式绑定"才联动；"同一个人"本身不是理由
+            else if (sameSharedAccountFanLX(item, currentKey) || boundFanLX(item, currentKey))
                 loggedInFanLX.insert(item);
         }
     }
@@ -96,7 +137,15 @@ class AccountManagerFanLX {
     // ==================== 后端配给 API（以内部 userId 为键，前端不调用） ====================
 
     // 注册新用户：用户 ID 必须全局唯一，重复注册抛出异常。
+    // 密码由用户在注册时自选，是后续登录的唯一凭据，因此不接受空密码——
+    // 账号库里没有"无密码账号"这种状态，否则登录校验就形同虚设。
     void addUser(UserProfileFanLX profile) {
+        if (profile.userId.empty())
+            throw std::runtime_error("用户ID不能为空");
+        if (profile.password.size() > 4096)
+            throw std::runtime_error("密码超过 4096 字节");
+        if (profile.password.empty())
+            throw std::runtime_error("密码不能为空");
         // emplace 失败（键已存在）返回 second=false
         if (!usersFanLX.emplace(profile.userId, std::move(profile)).second)
             throw std::runtime_error("用户ID已存在");
@@ -130,18 +179,139 @@ class AccountManagerFanLX {
     }
 
     void updateProfile(const std::string &user, std::string nickname, std::string location) {
-        auto &profile = usersFanLX.at(user);
-        profile.nickname = std::move(nickname);
-        profile.location = std::move(location);
+        updateNickname(user, std::move(nickname));
+        updateLocation(user, std::move(location));
     }
 
-    // ==================== 前端入口：登录（签发会话） ====================
+    // 单项修改：空串表示"这一项不改"，因此界面可以只提交昵称或只提交所在地。
+    // 以前这里要求两项都非空并且一起覆盖，用户想改昵称就被迫把所在地也重打一遍。
+    void updateNickname(const std::string &user, std::string nickname) {
+        if (nickname.empty())
+            return;
+        usersFanLX.at(user).nickname = std::move(nickname);
+    }
+    void updateLocation(const std::string &user, std::string location) {
+        if (location.empty())
+            return;
+        usersFanLX.at(user).location = std::move(location);
+    }
 
-    // 以「平台账号」登录并签发会话：调用方持有的是 QQ 号 / 微信号，不涉及内部 userId。
+    // ==================== 微X 上层：注册与开通下级服务 ====================
+
+    // 远端账号导入（添加好友时用）：把**服务端已确认存在**的对端账号登记进本机副本。
+    //
+    // 为什么需要它：本机领域库只是"谁存在、谁开通了什么"的一份局部视图，别人在各自的客户端
+    // 注册/开通出来的账号不会自动出现在这里；而添加好友的前置校验要查本机账号表，于是就会
+    // 报"对端平台账号不存在"。做法是：先问服务端（IM 的 LOOKUP），再由本方法补一条最小记录。
+    //
+    // 幂等：缺什么补什么，已存在就只补"已确认登录"的演示标记，并返回是否**新建**了账号记录。
+    // 密码用占位值：对端的密码我们无从得知（认证始终发生在服务端），但快照校验要求用户
+    // 必须有非空密码，因此写入一个不可能被猜到的占位串，本机不会用它登录任何人。
+    // applyDate 由调用方给（领域层不取系统时钟）。
+    bool importRemoteAccount(ServiceTypeFanLX service, const std::string &accountId,
+                             const std::string &userId, const std::string &nickname,
+                             const std::string &applyDate) {
+        if (!isSubordinateServiceFanLX(service))
+            throw std::runtime_error("只有 QQ / 微信 / 微博 能作为好友所在的服务");
+        if (accountId.empty() || userId.empty())
+            throw std::runtime_error("导入远端账号需要号码与归属用户");
+        if (usersFanLX.count(userId) == 0)
+            addUser({userId, nickname.empty() ? accountId : nickname, "2000-01-01",
+                     applyDate.empty() ? "2000-01-01" : applyDate, "", "<remote-account>"});
+        bool created = false;
+        if (accountIdIndexFanLX.count(accountIdKeyFanLX(service, accountId)) == 0) {
+            addAccount({userId, service, accountId, false});
+            syncSharedFlagsFanLX(userId);
+            created = true;
+        }
+        subscribe(userId, service);
+        // "对端已确认登录"的演示语义：对端是否在线由服务端决定，本机副本据此标记为已确认；
+        // 否则领域层会以"对端服务尚未确认登录"拒绝加好友——单机演示没有第二个进程替对方登录。
+        loggedInFanLX.insert(keyFanLX(userId, service));
+        return created;
+    }
+
+    // 注册微X账号：一个用户只有一个微X账号（上层身份），注册时**不**捆绑任何下级服务账号
+    // ——QQ / 微信 / 微博 必须由本人登录微X后在内部逐个开通（见 activateService）。
+    // 微X账号本身立即处于"已开通"状态，否则注册完无法登录。
+    void registerWeiXAccount(UserProfileFanLX profile, std::string weixAccountId) {
+        if (weixAccountId.empty())
+            throw std::runtime_error("微X号不能为空");
+        const auto user = profile.userId; // 先取副本：addUser 会移动 profile
+        addUser(std::move(profile));
+        addAccount({user, ServiceTypeFanLX::WeiX, std::move(weixAccountId), false});
+        subscriptionsFanLX.insert(keyFanLX(user, ServiceTypeFanLX::WeiX));
+        syncSharedFlagsFanLX(user);
+    }
+
+    // 开通下级服务（微X 上层之下）：为该用户建号并立即置为已开通。
+    // 前置：本人必须有微X账号（上层）——"只有登录微X后才能在内部去开通三种服务"在
+    // AccountSessionFanLX::activateService 里以"必须是微X会话"强制，这里再校验一次账号事实。
+    //
+    // 号码是**按服务各自唯一**的：QQ / 微信 / 微博 三个聊天通道允许使用相同号码
+    // （课程约定 QQ 与微博本来就共号），因为服务端把会话按"服务 + 号码"分开存放与投递，
+    // 客户端存储目录也带服务名，两条通道不会互相串消息。
+    void activateService(const std::string &user, ServiceTypeFanLX service, std::string accountId) {
+        if (!isSubordinateServiceFanLX(service))
+            throw std::runtime_error("微X 是上层账号，不能作为下级服务开通");
+        if (accountId.empty())
+            throw std::runtime_error("服务号码不能为空");
+        if (accountsFanLX.count(keyFanLX(user, ServiceTypeFanLX::WeiX)) == 0)
+            throw std::runtime_error("本人没有微X账号：请先注册并登录微X");
+        if (accountsFanLX.count(keyFanLX(user, service)) != 0)
+            throw std::runtime_error("该服务已经开通，无需重复开通");
+        if (accountIdIndexFanLX.count(accountIdKeyFanLX(service, accountId)) != 0)
+            throw std::runtime_error("该服务号码已被占用");
+        addAccount({user, service, std::move(accountId), false});
+        subscriptionsFanLX.insert(keyFanLX(user, service));
+        syncSharedFlagsFanLX(user); // QQ 与微博的共享号码标记在这里统一维护
+    }
+
+    // ==================== 前端入口：登录（用户名 + 密码） ====================
+
+    // 以「平台账号 + 密码」登录并签发会话：调用方持有的是 QQ 号 / 微信号加用户自选密码，
+    // 不涉及内部 userId。用户名就是平台账号 ID（accountId），与注册时登记的一致。
+    // 密码不符或账号不存在统一抛 CredentialRejectedFanLX("用户名或密码错误")。
     // confirmOthers 为 true 时，按"同号 / 显式绑定"两条依据批量确认登录该用户其它已开通平台
     // （对应工程计划"一次简单确认登录全部"）；为 false 则只登录当前账号。
     // 返回的会话是前端身份载体，只有服务与账号 ID，拿不到 userId。
-    AccountSessionFanLX login(ServiceTypeFanLX service, const std::string &accountId, bool confirmOthers);
+    AccountSessionFanLX login(ServiceTypeFanLX service, const std::string &accountId,
+                              const std::string &password, bool confirmOthers);
+
+    // 密码校验：只回 true/false，不抛异常，供网络认证等"凭据是否成立"的调用方使用。
+    // 账号不存在、账号未设密码、密码不符一律 false。
+    bool verifyPassword(ServiceTypeFanLX service, const std::string &accountId,
+                        const std::string &password) const {
+        const auto index = accountIdIndexFanLX.find(accountIdKeyFanLX(service, accountId));
+        if (index == accountIdIndexFanLX.end())
+            return false;
+        const auto &profile = usersFanLX.at(accountsFanLX.at(index->second).userId);
+        // 未设密码的账号（例如旧数据加载而来）对任何输入都不通过，包括空串。
+        return !profile.password.empty() && profile.password == password;
+    }
+
+    // 修改密码（注册之外唯一的凭据写入口）：旧密码必须正确，新密码不允许为空。
+    void changePassword(ServiceTypeFanLX service, const std::string &accountId,
+                        const std::string &oldPassword, std::string newPassword) {
+        if (!verifyPassword(service, accountId, oldPassword))
+            throw CredentialRejectedFanLX("用户名或密码错误");
+        if (newPassword.empty())
+            throw std::runtime_error("新密码不能为空");
+        if (newPassword.size() > 4096)
+            throw std::runtime_error("新密码超过 4096 字节");
+        usersFanLX.at(accountsFanLX.at(keyOfAccountIdFanLX(service, accountId)).userId).password =
+            std::move(newPassword);
+    }
+
+    // 会话恢复：调用方已凭 isAccountLoggedIn 确认该账号处于登录态，这里只重建前端身份句柄，
+    // 不再重复校验密码（密码在 login 那一次已经验证过）。未登录时抛 SessionExpiredFanLX。
+    AccountSessionFanLX resumeSession(ServiceTypeFanLX service, const std::string &accountId);
+
+    // 逐项确认登录：在"同一用户的已认证会话"内确认他的另一个平台账号登录
+    // （对应控制台"3 逐项确认登录"）。授权来源是已认证的会话，因此不再要求第二次密码；
+    // 但联动依据仍然是"同号 / 显式绑定"，与 confirmOthers 完全同一套规则。
+    void confirmLoginInSession(ServiceTypeFanLX actorService, const std::string &actorAccountId,
+                               ServiceTypeFanLX targetService, const std::string &targetAccountId);
 
     // ==================== 后端查询 API（配给、统计、持久化与测试用） ====================
 

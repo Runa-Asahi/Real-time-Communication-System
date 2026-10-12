@@ -46,6 +46,25 @@ void PersistenceApplicationFanLX::saveAndClose() {
     repositoryFanLX.close();
     closedFanLX = true;
 }
+
+// 账号库读穿：只有磁盘内容真的变了才重新解析，避免每次认证都重建领域对象。
+// 任何一步失败都保持原内存状态——宁可继续用旧快照，也不用半加载的状态覆盖在线对象。
+bool PersistenceApplicationFanLX::reloadIfChangedFromDisk() {
+    if (closedFanLX || !repositoryFanLX.writable())
+        return false;
+    if (!repositoryFanLX.changedOnDisk())
+        return false;
+    const auto result = repositoryFanLX.load();
+    if (result.status != LoadStatusFanLX::Loaded)
+        return false;
+    auto rebuilt = SnapshotCodecFanLX::build(result.snapshot);
+    // 登录态是内存概念（不写盘）：重载时必须保留，否则会把已登录的领域会话清掉。
+    SnapshotCodecFanLX::copySessions(rebuilt, stateFanLX);
+    stateFanLX = std::move(rebuilt);
+    loadFanLX = result;
+    queryCacheFanLX.clear();
+    return true;
+}
 void PersistenceApplicationFanLX::importInitial(const PlatformSnapshotFanLX &seed) {
     requireReady();
     if (!snapshot().users.empty() || !snapshot().groups.empty())
@@ -60,9 +79,9 @@ void PersistenceApplicationFanLX::importInitial(const PlatformSnapshotFanLX &see
 }
 AccountSessionFanLX PersistenceApplicationFanLX::session(PlatformStateFanLX &s,
                                                          const AccountRefFanLX &actor) const {
-    if (!s.accounts.isAccountLoggedIn(actor.service, actor.accountId))
-        throw SessionExpiredFanLX("服务未登录");
-    return s.accounts.login(actor.service, actor.accountId, false);
+    // 会话恢复不校验密码：能走到这里的调用方都是在 login 通过之后凭登录态工作的，
+    // 密码关口只在 login 那一处（未登录时 resumeSession 抛 SessionExpiredFanLX）。
+    return s.accounts.resumeSession(actor.service, actor.accountId);
 }
 std::string PersistenceApplicationFanLX::actorUser(PlatformStateFanLX &s, const AccountRefFanLX &actor,
                                                    const GroupKeyFanLX &key) const {
@@ -87,9 +106,24 @@ void PersistenceApplicationFanLX::registerUser(UserProfileFanLX u,
             s.accounts.subscribe(u.userId, accounts.front().service);
     });
 }
-void PersistenceApplicationFanLX::login(AccountRefFanLX actor, bool confirm) {
+void PersistenceApplicationFanLX::registerWeiXUser(UserProfileFanLX user, std::string weixAccountId) {
     requireReady();
-    stateFanLX.accounts.login(actor.service, actor.accountId, confirm);
+    transactionsFanLX.execute([&](auto &s) {
+        // 注册只产生"微X + 密码"：一个真人一个微X号，登录身份就是它。
+        s.accounts.registerWeiXAccount(std::move(user), std::move(weixAccountId));
+    });
+}
+void PersistenceApplicationFanLX::activateService(AccountRefFanLX actor, ServiceTypeFanLX service,
+                                                  std::string serviceAccountId) {
+    requireReady();
+    transactionsFanLX.execute([&](auto &s) {
+        // 授权来源是"本人已认证的会话"；领域层再要求该会话必须是微X身份。
+        session(s, actor).activateService(service, serviceAccountId);
+    });
+}
+void PersistenceApplicationFanLX::login(AccountRefFanLX actor, const std::string &password, bool confirm) {
+    requireReady();
+    stateFanLX.accounts.login(actor.service, actor.accountId, password, confirm);
 }
 void PersistenceApplicationFanLX::logout(AccountRefFanLX actor, bool all) {
     requireReady();
@@ -117,8 +151,18 @@ void PersistenceApplicationFanLX::updateProfile(AccountRefFanLX actor, std::stri
     requireReady();
     transactionsFanLX.execute([&](auto &s) {
         session(s, actor);
-        s.accounts.updateProfile(s.accounts.accountByAccountId(actor.service, actor.accountId).userId,
-                                 nickname, location);
+        // 单项修改：空串保留原值，因此"只改昵称"不会再顺手清掉所在地。
+        const auto user = s.accounts.accountByAccountId(actor.service, actor.accountId).userId;
+        s.accounts.updateNickname(user, std::move(nickname));
+        s.accounts.updateLocation(user, std::move(location));
+    });
+}
+void PersistenceApplicationFanLX::changePassword(AccountRefFanLX actor, const std::string &oldPassword,
+                                                 std::string newPassword) {
+    requireReady();
+    transactionsFanLX.execute([&](auto &s) {
+        // 不要求当前处于登录态：改密的凭据是"旧密码"，不是会话（会话可能已经过期）。
+        s.accounts.changePassword(actor.service, actor.accountId, oldPassword, std::move(newPassword));
     });
 }
 void PersistenceApplicationFanLX::addFriend(AccountRefFanLX actor, AccountRefFanLX peer) {
@@ -127,6 +171,51 @@ void PersistenceApplicationFanLX::addFriend(AccountRefFanLX actor, AccountRefFan
         FriendServiceFanLX f(s.friends, s.accounts);
         f.addFriend(session(s, actor), peer.service, peer.accountId);
     });
+}
+// 远端账号导入：见 AccountManagerFanLX::importRemoteAccount。走事务，因此要么整条记录落盘、
+// 要么完全不变（与其它写操作同一条持久化路径）。
+bool PersistenceApplicationFanLX::importRemotePeerAccount(AccountRefFanLX peer, const std::string &userId,
+                                                          const std::string &nickname) {
+    requireReady();
+    bool created = false;
+    transactionsFanLX.execute([&](auto &s) {
+        created = s.accounts.importRemoteAccount(peer.service, peer.accountId, userId, nickname,
+                                                utcNowFanLX().substr(0, 10));
+    });
+    return created;
+}
+// 服务端镜像一条**已经成立**的好友关系：不做"对端是否确认登录"的检查（发起端在客户端那边
+// 已经校验过），只把关系写进目录，让服务端的好友权限判定能看到它。幂等：已存在则返回 false。
+bool PersistenceApplicationFanLX::mirrorFriendship(AccountRefFanLX actor, AccountRefFanLX peer) {
+    requireReady();
+    if (actor.service != peer.service)
+        throw std::runtime_error("好友关系只能建立在同一个服务里");
+    bool created = false;
+    transactionsFanLX.execute([&](auto &s) {
+        IdentityResolverFanLX resolver(s.accounts);
+        const auto left = resolver.accountKey(actor.service, actor.accountId);
+        const auto right = resolver.accountKey(peer.service, peer.accountId);
+        auto &directory = s.friends.directory(actor.service);
+        if (directory.contains(left, right))
+            return;
+        if (!directory.add(left, right))
+            return;
+        created = true;
+    });
+    return created;
+}
+bool PersistenceApplicationFanLX::unmirrorFriendship(AccountRefFanLX actor, AccountRefFanLX peer) {
+    requireReady();
+    if (actor.service != peer.service)
+        throw std::runtime_error("好友关系只能建立在同一个服务里");
+    bool removed = false;
+    transactionsFanLX.execute([&](auto &s) {
+        IdentityResolverFanLX resolver(s.accounts);
+        const auto left = resolver.accountKey(actor.service, actor.accountId);
+        const auto right = resolver.accountKey(peer.service, peer.accountId);
+        removed = s.friends.directory(actor.service).remove(left, right);
+    });
+    return removed;
 }
 void PersistenceApplicationFanLX::removeFriend(AccountRefFanLX actor, AccountRefFanLX peer) {
     requireReady();
@@ -177,6 +266,17 @@ void PersistenceApplicationFanLX::inviteMember(AccountRefFanLX actor, GroupKeyFa
             throw std::runtime_error("目标服务不匹配");
         s.groups.inviteMember(key, user,
                               s.accounts.accountByAccountId(target.service, target.accountId).userId);
+    });
+}
+void PersistenceApplicationFanLX::inviteToApply(AccountRefFanLX actor, GroupKeyFanLX key,
+                                                AccountRefFanLX target) {
+    requireReady();
+    transactionsFanLX.execute([&](auto &s) {
+        const auto user = actorUser(s, actor, key);
+        if (target.service != actor.service)
+            throw std::runtime_error("目标服务不匹配");
+        s.groups.inviteToApply(key, user,
+                               s.accounts.accountByAccountId(target.service, target.accountId).userId);
     });
 }
 void PersistenceApplicationFanLX::confirmInvitation(AccountRefFanLX actor, GroupKeyFanLX key, bool reject) {
@@ -295,7 +395,8 @@ std::vector<std::string> PersistenceApplicationFanLX::queryFriendAccounts(Accoun
         queryVersionFanLX(stateFanLX, "friends/" + ref)}.dump();
     if (auto cached = queryCacheFanLX.get(key)) return *cached;
     std::vector<std::string> result;
-    for (const auto &peer : stateFanLX.friends.peers(accountKey))
+    // 只读"当前服务"那一份好友分区：切到微信看到的就是微信的好友，不会串到 QQ。
+    for (const auto &peer : stateFanLX.friends.directory(actor.service).peers(accountKey))
         result.push_back(stateFanLX.accounts.account(resolver.userForAccount(peer), actor.service).accountId);
     std::sort(result.begin(), result.end());
     queryCacheFanLX.put(key, result);
@@ -325,14 +426,10 @@ std::vector<std::string> PersistenceApplicationFanLX::queryGroupMembers(AccountR
 
 void PersistenceApplicationFanLX::confirmLogin(AccountRefFanLX actor, AccountRefFanLX target) {
     requireReady();
-    session(stateFanLX, actor);
-    const auto &from = stateFanLX.accounts.accountByAccountId(actor.service, actor.accountId);
-    const auto &to = stateFanLX.accounts.accountByAccountId(target.service, target.accountId);
-    if (from.userId != to.userId ||
-        (!(from.sharedId && to.sharedId && from.accountId == to.accountId) &&
-         !stateFanLX.accounts.isBound(actor.service, actor.accountId, target.service, target.accountId)))
-        throw std::runtime_error("逐项确认需要本人的共享号码或已验证绑定");
-    stateFanLX.accounts.login(target.service, target.accountId, false);
+    // 联动规则（同号 / 显式绑定）与授权来源（本人已认证的会话）都收敛在领域里实现，
+    // 应用层不再自己拼一遍判定条件——避免两份规则随时间漂移。
+    stateFanLX.accounts.confirmLoginInSession(actor.service, actor.accountId, target.service,
+                                              target.accountId);
 }
 std::vector<std::string> PersistenceApplicationFanLX::queryCommonFriends(AccountRefFanLX actor,
                                                                          AccountRefFanLX peer) {

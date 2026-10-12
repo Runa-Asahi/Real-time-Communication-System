@@ -75,6 +75,13 @@ class FriendDirectoryFanLX {
         std::sort(result.begin(), result.end());
         return result;
     }
+    // 关系对数量：邻接表是双向登记的，因此全部邻接边数除以 2 就是关系对数。
+    std::size_t pairCount() const {
+        std::size_t edges = 0;
+        for (const auto &item : adjacencyFanLX)
+            edges += item.second.size();
+        return edges / 2;
+    }
     // 清空目录：删除全部好友关系与细节。
     void clear() {
         adjacencyFanLX.clear();

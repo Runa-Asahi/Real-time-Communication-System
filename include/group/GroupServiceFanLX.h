@@ -72,6 +72,16 @@ class GroupServiceFanLX {
                 applicant, GroupApplicationFanLX{applicant, true, "Pending", {}, {}});
     }
 
+    // QQ 群的"邀请他人"：成员替对方提交入群申请，仍由群主/管理员审批（保持申请-审批制，
+    // 与微信的"推荐-本人确认"区分开）。已是成员或已有待处理申请时不重复创建。
+    void inviteToApply(const GroupKeyFanLX &key, const std::string &inviter, const std::string &invitee) {
+        const auto &group = get(key);
+        requireMode(group, GroupModeFanLX::QQ);
+        if (!group.hasMember(inviter))
+            throw std::runtime_error("邀请人必须是群成员");
+        applyToJoin(key, invitee);
+    }
+
     bool approveApplication(const GroupKeyFanLX &key, const std::string &actor,
                             const std::string &applicant) {
         auto &group = get(key);
@@ -186,6 +196,19 @@ class GroupServiceFanLX {
 
     std::size_t archivedGroupCount() const noexcept {
         return archivesFanLX.size();
+    }
+    // 只读枚举：按群键字典序返回当前存续群键，供"服务器授权目录"等只读场景使用。
+    // 不暴露群对象引用，避免调用方绕过服务层直接改成员。
+    std::vector<GroupKeyFanLX> groupKeys() const {
+        std::vector<GroupKeyFanLX> keys;
+        keys.reserve(groupsFanLX.size());
+        for (const auto &entry : groupsFanLX)
+            keys.push_back(entry.first);
+        std::sort(keys.begin(), keys.end(), [](const GroupKeyFanLX &left, const GroupKeyFanLX &right) {
+            if (left.mode != right.mode) return left.mode < right.mode;
+            return left.id < right.id;
+        });
+        return keys;
     }
     void expirePending(const std::string &now) {
         // 仅在写事务候选内关闭过期记录；只读加载绝不隐式改写历史。

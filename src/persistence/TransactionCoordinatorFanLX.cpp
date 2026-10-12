@@ -56,29 +56,35 @@ bool TransactionCoordinatorFanLX::execute(const std::function<void(PlatformState
         if (oldJson[field] != newJson[field])
             bump(field);
     // 每个账号邻接/备注独立版本。JSON 引用作为结构化键编码，避免拼接碰撞。
+    // schemaVersion 2 起好友按服务分区，因此先遍历分区再遍历分区内的关系。
     auto friendViews = [](const auto &json) {
         std::map<std::string, nlohmann::json> views;
-        for (const auto &f : json) {
-            const auto l = f["left"].dump(), r = f["right"].dump();
-            views["friends/" + l].push_back(f["right"]);
-            views["friends/" + r].push_back(f["left"]);
-            views["remarks/" + l].push_back({f["right"], f["leftRemark"], f["leftTag"]});
-            views["remarks/" + r].push_back({f["left"], f["rightRemark"], f["rightTag"]});
+        for (auto section = json.begin(); section != json.end(); ++section) {
+            for (const auto &f : section.value()) {
+                const auto l = f["left"].dump(), r = f["right"].dump();
+                views["friends/" + l].push_back(f["right"]);
+                views["friends/" + r].push_back(f["left"]);
+                views["remarks/" + l].push_back({f["right"], f["leftRemark"], f["leftTag"]});
+                views["remarks/" + r].push_back({f["left"], f["rightRemark"], f["rightTag"]});
+            }
         }
         return views;
     };
-    auto oldViews = friendViews(oldJson["friendships"]), newViews = friendViews(newJson["friendships"]);
+    auto oldViews = friendViews(oldJson["friends"]), newViews = friendViews(newJson["friends"]);
     for (const auto &item : oldViews)
         if (newViews[item.first] != item.second)
             bump(item.first);
     for (const auto &item : newViews)
         if (oldViews[item.first] != item.second)
             bump(item.first);
+    auto collectGroups = [](const auto &json, auto &out) {
+        for (auto section = json.begin(); section != json.end(); ++section)
+            for (const auto &g : section.value())
+                out[g["key"].dump()] = g;
+    };
     std::map<std::string, nlohmann::json> oldGroups, newGroups;
-    for (const auto &g : oldJson["groups"])
-        oldGroups[g["key"].dump()] = g;
-    for (const auto &g : newJson["groups"])
-        newGroups[g["key"].dump()] = g;
+    collectGroups(oldJson["groups"], oldGroups);
+    collectGroups(newJson["groups"], newGroups);
     for (const auto &item : newGroups) {
         const auto &old = oldGroups[item.first];
         const auto &next = item.second;

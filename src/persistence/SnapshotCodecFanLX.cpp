@@ -27,6 +27,8 @@ ServiceTypeFanLX serviceFanLX(const JsonFanLX &j) {
         return ServiceTypeFanLX::Wechat;
     if (j == "Weibo")
         return ServiceTypeFanLX::Weibo;
+    if (j == "WeiX")
+        return ServiceTypeFanLX::WeiX;
     invalidFanLX("未知服务");
 }
 std::string roleNameFanLX(GroupRoleFanLX r) {
@@ -206,12 +208,15 @@ PlatformSnapshotFanLX SnapshotCodecFanLX::capture(const PlatformStateFanLX &stat
         const auto &r = a.accountsFanLX.at(item.second);
         s.bindings.push_back({{l.service, l.accountId}, {r.service, r.accountId}});
     }
-    for (const auto &item : state.friends.detailsFanLX) {
-        const auto &f = item.second;
-        if (f.ownerAccountKey < f.peerAccountKey) {
-            auto reverse = state.friends.detail(f.peerAccountKey, f.ownerAccountKey);
-            s.friendships.push_back({refs.at(f.ownerAccountKey), refs.at(f.peerAccountKey), f.remark, f.tag,
-                                     reverse.remark, reverse.tag});
+    for (const auto &partition : state.friends.partitions()) {
+        // 每个服务一份目录：同一份 details 表只包含本服务的关系，跨服务关系在领域层就被拒绝。
+        for (const auto &item : partition.second.detailsFanLX) {
+            const auto &f = item.second;
+            if (f.ownerAccountKey < f.peerAccountKey) {
+                auto reverse = partition.second.detail(f.peerAccountKey, f.ownerAccountKey);
+                s.friendships.push_back({refs.at(f.ownerAccountKey), refs.at(f.peerAccountKey), f.remark,
+                                         f.tag, reverse.remark, reverse.tag});
+            }
         }
     }
     for (const auto &g : state.groups.groupsFanLX)
@@ -274,11 +279,14 @@ PlatformStateFanLX SnapshotCodecFanLX::build(const PlatformSnapshotFanLX &s) {
         state.accounts.bindAccounts(b.left.service, b.left.accountId, b.right.service, b.right.accountId);
     IdentityResolverFanLX resolver(state.accounts);
     for (const auto &f : s.friendships) {
+        // 好友只能落在同一个服务分区里：两端服务不一致的快照在 SchemaValidatorFanLX 已被拒绝，
+        // 这里再按 left 的服务取分区，保证写入位置唯一。
         auto l = resolver.accountKey(f.left.service, f.left.accountId),
              r = resolver.accountKey(f.right.service, f.right.accountId);
-        state.friends.add(l, r);
-        state.friends.update(l, r, f.leftRemark, f.leftTag);
-        state.friends.update(r, l, f.rightRemark, f.rightTag);
+        auto &directory = state.friends.directory(f.left.service);
+        directory.add(l, r);
+        directory.update(l, r, f.leftRemark, f.leftTag);
+        directory.update(r, l, f.rightRemark, f.rightTag);
     }
     for (const auto &g : s.groups)
         restoreGroup(state.groups, g);
@@ -290,20 +298,32 @@ PlatformStateFanLX SnapshotCodecFanLX::build(const PlatformSnapshotFanLX &s) {
     return state;
 }
 nlohmann::json SnapshotCodecFanLX::encode(const PlatformSnapshotFanLX &s) {
-    JsonFanLX j = {{"schemaVersion", 1u},
+    // schemaVersion 2：好友与群不再是一个扁平数组，而是**按服务分区**的对象
+    //   "friends": { "QQ": [...], "Wechat": [...], "Weibo": [...] }
+    //   "groups" / "archivedGroups": { "QQ": [...], "Wechat": [...] }
+    // 这样"三种服务分别存储"在文件里一眼可见，也让"跨服务好友"这种数据在结构上无处安放。
+    JsonFanLX j = {{"schemaVersion", 2u},
                    {"generation", s.generation},
                    {"parentGeneration", s.parentGeneration},
                    {"committedAtUtc", s.committedAtUtc},
                    {"versions", s.versions}};
-    for (const auto &key :
-         {"users", "accounts", "subscriptions", "bindings", "friendships", "groups", "archivedGroups"})
+    for (const auto &key : {"users", "accounts", "subscriptions", "bindings"})
         j[key] = JsonFanLX::array();
+    j["friends"] = JsonFanLX::object();
+    for (const auto service : {ServiceTypeFanLX::QQ, ServiceTypeFanLX::Wechat, ServiceTypeFanLX::Weibo})
+        j["friends"][serviceNameFanLX(service)] = JsonFanLX::array();
+    for (const auto &key : {"groups", "archivedGroups"}) {
+        j[key] = JsonFanLX::object();
+        j[key][modeNameFanLX(GroupModeFanLX::QQ)] = JsonFanLX::array();
+        j[key][modeNameFanLX(GroupModeFanLX::Wechat)] = JsonFanLX::array();
+    }
     for (const auto &u : s.users)
         j["users"].push_back({{"userId", u.userId},
                               {"nickname", u.nickname},
                               {"birthDate", u.birthDate},
                               {"applyDate", u.applyDate},
-                              {"location", u.location}});
+                              {"location", u.location},
+                              {"password", u.password}});
     for (const auto &a : s.accounts)
         j["accounts"].push_back({{"userId", a.userId},
                                  {"service", serviceNameFanLX(a.service)},
@@ -314,22 +334,24 @@ nlohmann::json SnapshotCodecFanLX::encode(const PlatformSnapshotFanLX &s) {
     for (const auto &b : s.bindings)
         j["bindings"].push_back({{"left", refJsonFanLX(b.left)}, {"right", refJsonFanLX(b.right)}});
     for (const auto &f : s.friendships)
-        j["friendships"].push_back({{"left", refJsonFanLX(f.left)},
-                                    {"right", refJsonFanLX(f.right)},
-                                    {"leftRemark", f.leftRemark},
-                                    {"leftTag", f.leftTag},
-                                    {"rightRemark", f.rightRemark},
-                                    {"rightTag", f.rightTag}});
+        j["friends"][serviceNameFanLX(f.left.service)].push_back({{"left", refJsonFanLX(f.left)},
+                                                                  {"right", refJsonFanLX(f.right)},
+                                                                  {"leftRemark", f.leftRemark},
+                                                                  {"leftTag", f.leftTag},
+                                                                  {"rightRemark", f.rightRemark},
+                                                                  {"rightTag", f.rightTag}});
     for (const auto &g : s.groups)
-        j["groups"].push_back(groupJsonFanLX(g));
+        j["groups"][modeNameFanLX(g.key.mode)].push_back(groupJsonFanLX(g));
     for (const auto &g : s.archivedGroups)
-        j["archivedGroups"].push_back(groupJsonFanLX(g));
+        j["archivedGroups"][modeNameFanLX(g.key.mode)].push_back(groupJsonFanLX(g));
     return j;
 }
 PlatformSnapshotFanLX SnapshotCodecFanLX::decode(const nlohmann::json &j) {
     try {
-        if (uintFanLX(j.at("schemaVersion")) != 1)
-            throw PersistenceErrorFanLX(PersistenceErrorCodeFanLX::UnsupportedSchema, "未知 schemaVersion");
+        if (uintFanLX(j.at("schemaVersion")) != 2)
+            throw PersistenceErrorFanLX(PersistenceErrorCodeFanLX::UnsupportedSchema,
+                                        "未知 schemaVersion：本版本读写 schemaVersion=2"
+                                        "（好友与群按服务分区；旧库请备份后重新初始化）");
         PlatformSnapshotFanLX s;
         s.generation = uintFanLX(j.at("generation"));
         s.parentGeneration = uintFanLX(j.at("parentGeneration"));
@@ -339,9 +361,12 @@ PlatformSnapshotFanLX SnapshotCodecFanLX::decode(const nlohmann::json &j) {
         for (auto it = j.at("versions").begin(); it != j.at("versions").end(); ++it)
             s.versions.emplace(it.key(), uintFanLX(it.value()));
         for (const auto &u : arrayFanLX(j.at("users"), 10000))
+            // password 用"缺字段按空串"读取：字段缺失说明是旧快照，交给 SchemaValidatorFanLX
+            // 报一条能照着做的错误（重新 --init-demo），而不是在这里抛 JSON 字段异常。
             s.users.push_back({strFanLX(u.at("userId")), strFanLX(u.at("nickname")),
                                strFanLX(u.at("birthDate")), strFanLX(u.at("applyDate")),
-                               strFanLX(u.at("location"))});
+                               strFanLX(u.at("location")),
+                               u.contains("password") ? strFanLX(u.at("password")) : std::string()});
         for (const auto &a : arrayFanLX(j.at("accounts"), 30000))
             s.accounts.push_back({strFanLX(a.at("userId")), serviceFanLX(a.at("service")),
                                   strFanLX(a.at("accountId")), boolFanLX(a.at("sharedId"))});
@@ -349,14 +374,48 @@ PlatformSnapshotFanLX SnapshotCodecFanLX::decode(const nlohmann::json &j) {
             s.subscriptions.push_back(refFanLX(r));
         for (const auto &b : arrayFanLX(j.at("bindings"), 30000))
             s.bindings.push_back({refFanLX(b.at("left")), refFanLX(b.at("right"))});
-        for (const auto &f : arrayFanLX(j.at("friendships"), 100000))
-            s.friendships.push_back({refFanLX(f.at("left")), refFanLX(f.at("right")),
-                                     strFanLX(f.at("leftRemark")), strFanLX(f.at("leftTag")),
-                                     strFanLX(f.at("rightRemark")), strFanLX(f.at("rightTag"))});
-        for (const auto &g : arrayFanLX(j.at("groups"), 1000))
-            s.groups.push_back(groupFanLX(g));
-        for (const auto &g : arrayFanLX(j.at("archivedGroups"), 1000))
-            s.archivedGroups.push_back(groupFanLX(g));
+        // 好友：按服务分区读取；每条关系的两端必须与该分区同名，否则拒绝加载（宁可报错也不串服务）。
+        if (!j.at("friends").is_object())
+            invalidFanLX("好友分区须为对象");
+        std::size_t friendshipTotal = 0;
+        for (auto section = j.at("friends").begin(); section != j.at("friends").end(); ++section) {
+            ServiceTypeFanLX service{};
+            if (!serviceFromNameFanLX(section.key(), service))
+                invalidFanLX("未知好友分区服务: " + section.key());
+            for (const auto &f : arrayFanLX(section.value(), 100000)) {
+                FriendSnapshotFanLX entry{refFanLX(f.at("left")), refFanLX(f.at("right")),
+                                          strFanLX(f.at("leftRemark")), strFanLX(f.at("leftTag")),
+                                          strFanLX(f.at("rightRemark")), strFanLX(f.at("rightTag"))};
+                if (entry.left.service != service || entry.right.service != service)
+                    invalidFanLX("好友分区与服务不一致");
+                if (++friendshipTotal > 100000)
+                    invalidFanLX("好友关系总量超限");
+                s.friendships.push_back(std::move(entry));
+            }
+        }
+        // 群：按群命名空间（QQ / 微信）分区读取，同样校验分区与群键一致。
+        for (const auto *field : {"groups", "archivedGroups"}) {
+            if (!j.at(field).is_object())
+                invalidFanLX("群分区须为对象");
+            for (auto section = j.at(field).begin(); section != j.at(field).end(); ++section) {
+                GroupModeFanLX mode{};
+                if (section.key() == "QQ")
+                    mode = GroupModeFanLX::QQ;
+                else if (section.key() == "Wechat")
+                    mode = GroupModeFanLX::Wechat;
+                else
+                    invalidFanLX("未知群分区命名空间: " + section.key());
+                for (const auto &g : arrayFanLX(section.value(), 1000)) {
+                    auto record = groupFanLX(g);
+                    if (record.key.mode != mode)
+                        invalidFanLX("群分区与群命名空间不一致");
+                    if (std::string(field) == "groups")
+                        s.groups.push_back(std::move(record));
+                    else
+                        s.archivedGroups.push_back(std::move(record));
+                }
+            }
+        }
         SchemaValidatorFanLX::validate(s);
         return s;
     } catch (const nlohmann::json::exception &e) {

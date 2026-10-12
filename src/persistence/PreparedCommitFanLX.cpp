@@ -53,10 +53,9 @@ void PreparedCommitFanLX::publish() noexcept {
     a.loggedInFanLX.swap(b.loggedInFanLX);
     auto &f = liveFanLX.friends;
     auto &cf = candidateFanLX.friends;
-    static_assert(noexcept(f.adjacencyFanLX.swap(cf.adjacencyFanLX)), "邻接交换须无异常");
-    static_assert(noexcept(f.detailsFanLX.swap(cf.detailsFanLX)), "好友资料交换须无异常");
-    f.adjacencyFanLX.swap(cf.adjacencyFanLX);
-    f.detailsFanLX.swap(cf.detailsFanLX);
+    // 好友目录按服务分区存放，因此整体交换分区表即可（各服务的目录一次性换完）。
+    static_assert(noexcept(f.directoriesFanLX.swap(cf.directoriesFanLX)), "好友分区交换须无异常");
+    f.directoriesFanLX.swap(cf.directoriesFanLX);
     auto &g = liveFanLX.groups;
     auto &cg = candidateFanLX.groups;
     static_assert(noexcept(g.groupsFanLX.swap(cg.groupsFanLX)), "群注册表交换须无异常");

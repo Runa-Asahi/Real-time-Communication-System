@@ -88,7 +88,7 @@ int wmain(int argc, wchar_t **argv) {
                     TerminateProcess(GetCurrentProcess(), 77);
             };
             PersistenceApplicationFanLX app(dir, fixedTimeFanLX, hook);
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             app.switchPolicy(owner, qq, GroupModeFanLX::Wechat);
             return 4;
         }
@@ -107,29 +107,57 @@ int wmain(int argc, wchar_t **argv) {
     std::filesystem::create_directories(root);
     try {
         const auto fixtures = std::filesystem::path(__FILE__).parent_path() / "fixtures" / "persistence";
-        assert(SnapshotCodecFanLX::parse(AtomicFileWriterFanLX::read(fixtures / "valid-state-v1.json"))
+        assert(SnapshotCodecFanLX::parse(AtomicFileWriterFanLX::read(fixtures / "valid-state-v2.json"))
                    .users.size() == 12);
+        // 账号库改造的迁移边界：本次之前的 v1 文件没有用户密码字段。这种文件必须被明确拒绝，
+        // 并且错误文本要指出重新 --init-demo，而不是加载出一个"谁也用密码登不进去"的账号库。
+        {
+            auto legacy = nlohmann::json::parse(
+                AtomicFileWriterFanLX::read(fixtures / "valid-state-v2.json"));
+            for (auto &user : legacy["users"])
+                user.erase("password");
+            assert(legacy["users"][0].find("password") == legacy["users"][0].end());
+            bool rejected = false;
+            try {
+                SnapshotCodecFanLX::parse(legacy.dump());
+            } catch (const PersistenceErrorFanLX &error) {
+                rejected = std::string(error.what()).find("缺少登录密码") != std::string::npos;
+            }
+            assert(rejected);
+        }
         failsFanLX([&] {
             SnapshotCodecFanLX::parse(AtomicFileWriterFanLX::read(fixtures / "duplicate-property.json"));
         });
         failsFanLX([&] {
             SnapshotCodecFanLX::parse(AtomicFileWriterFanLX::read(fixtures / "unsupported-schema.json"));
         });
+        // 本次改造的第二个迁移边界：v1（好友与群是一个扁平数组）已不再支持，
+        // 必须明确报 schemaVersion 并要求重新初始化，而不是把旧结构读成"没有好友"。
+        {
+            bool rejected = false;
+            try {
+                SnapshotCodecFanLX::parse(AtomicFileWriterFanLX::read(fixtures / "valid-state-v1.json"));
+            } catch (const PersistenceErrorFanLX &error) {
+                rejected = std::string(error.what()).find("schemaVersion") != std::string::npos;
+            }
+            assert(rejected);
+        }
         // T11：完整字段、幂等、事务门面、稳定地址、S05 保存后切换回原策略。
         auto basic = root / L"中文往返";
         initializeFanLX(basic);
         nlohmann::json expected;
         {
             PersistenceApplicationFanLX app(basic, fixedTimeFanLX);
-            app.login(owner, true);
-            app.login(admin);
-            app.login(third);
-            app.login(fourth);
+            app.login(owner, demoPasswordFanLX(owner.accountId), true);
+            app.login(admin, demoPasswordFanLX(admin.accountId));
+            app.login(third, demoPasswordFanLX(third.accountId));
+            app.login(fourth, demoPasswordFanLX(fourth.accountId));
             const auto *address = &app.state().groups.get(qq);
             const auto *childAddress = &app.state().groups.getDiscussion(qq, "D1");
             const auto before = app.snapshot();
             assert(before.groups.size() == 12 && before.users.size() == 12);
-            assert(before.bindings.size() == 12 && before.friendships.size() == 1);
+            // 演示数据有两对好友关系：QQ 一份、微博一份（微信保持为空，用于演示"分别存储"）。
+            assert(before.bindings.size() == 12 && before.friendships.size() == 2);
             const auto generation = app.state().generation;
             app.applyToJoin(fourth, qq);
             assert(app.state().generation ==
@@ -165,9 +193,9 @@ int wmain(int argc, wchar_t **argv) {
         {
             PersistenceApplicationFanLX app(basic, fixedTimeFanLX);
             assert(SnapshotCodecFanLX::encode(app.snapshot()) == expected);
-            app.login(owner);
-            app.login(admin);
-            app.login(fourth);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
+            app.login(admin, demoPasswordFanLX(admin.accountId));
+            app.login(fourth, demoPasswordFanLX(fourth.accountId));
             app.switchPolicy(owner, qq, GroupModeFanLX::QQ);
             app.kick(admin, qq, fourth);
             app.transferOwnership(owner, qq, admin);
@@ -193,7 +221,7 @@ int wmain(int argc, wchar_t **argv) {
                 if (enabled && at == stage)
                     throw std::runtime_error("injected I/O failure");
             });
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             auto before = SnapshotCodecFanLX::encode(app.snapshot());
             const auto *policy = &app.state().groups.get(qq).policy();
             const auto disk = AtomicFileWriterFanLX::read(dir / L"state.json");
@@ -212,7 +240,7 @@ int wmain(int argc, wchar_t **argv) {
                 if (stage == CommitStageFanLX::AfterPublish)
                     throw std::runtime_error("after commit");
             });
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             app.switchPolicy(owner, qq, GroupModeFanLX::Wechat);
             assert(app.state().groups.get(qq).currentMode() == GroupModeFanLX::Wechat);
         }
@@ -241,7 +269,7 @@ int wmain(int argc, wchar_t **argv) {
             PersistenceApplicationFanLX app(dir, fixedTimeFanLX);
             assert(app.loadResult().status == LoadStatusFanLX::RecoveredReadOnly);
             failsFanLX([&] { app.initialize(); });
-            failsFanLX([&] { app.registerUser({"new", "n", "2000-01-01", "2026-01-01", "x"}, {}); });
+            failsFanLX([&] { app.registerUser({"new", "n", "2000-01-01", "2026-01-01", "x", "pw-new"}, {}); });
             assert(AtomicFileWriterFanLX::read(dir / L"state.json") == "broken");
             app.confirmRecovery();
             assert(AtomicFileWriterFanLX::read(dir / L"state.json.prev") == prev);
@@ -302,13 +330,13 @@ int wmain(int argc, wchar_t **argv) {
             if (i == 1)
                 bad["accounts"][0]["userId"] = "absent";
             if (i == 2)
-                bad["groups"][0]["members"][0]["role"] = "Member";
+                bad["groups"]["QQ"][0]["members"][0]["role"] = "Member";
             if (i == 3)
-                bad["groups"][0]["members"][1]["role"] = "Owner";
+                bad["groups"]["QQ"][0]["members"][1]["role"] = "Owner";
             if (i == 4)
-                bad["groups"][0]["nextJoinOrder"] = 0u;
+                bad["groups"]["QQ"][0]["nextJoinOrder"] = 0u;
             if (i == 5)
-                bad["groups"][0]["members"][1]["joinOrder"] = 0u;
+                bad["groups"]["QQ"][0]["members"][1]["joinOrder"] = 0u;
             if (i == 6)
                 bad["users"][0]["birthDate"] = "2001-02-29";
             if (i == 7)
@@ -316,11 +344,11 @@ int wmain(int argc, wchar_t **argv) {
             if (i == 8)
                 bad["generation"] = -1;
             if (i == 9)
-                bad["groups"][0]["currentMode"] = "Unknown";
+                bad["groups"]["QQ"][0]["currentMode"] = "Unknown";
             if (i == 10)
-                bad["friendships"][0]["right"]["accountId"] = "missing";
+                bad["friends"]["QQ"][0]["right"]["accountId"] = "missing";
             if (i == 11)
-                bad["groups"][0]["discussions"][0]["members"].push_back("U12");
+                bad["groups"]["QQ"][0]["discussions"][0]["members"].push_back("U12");
             failsFanLX([&] { SnapshotCodecFanLX::parse(bad.dump()); });
         }
         failsFanLX([&] { SnapshotCodecFanLX::parse("{\"schemaVersion\":1,\"schemaVersion\":1}"); });
@@ -331,8 +359,8 @@ int wmain(int argc, wchar_t **argv) {
             auto dir = root / L"commands";
             initializeFanLX(dir);
             PersistenceApplicationFanLX app(dir, fixedTimeFanLX);
-            app.login(owner);
-            app.login(fourth);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
+            app.login(fourth, demoPasswordFanLX(fourth.accountId));
             app.approveApplication(owner, qq, fourth, true);
             assert(!app.state().groups.get(qq).hasMember("U4"));
             app.applyToJoin(fourth, qq);
@@ -343,16 +371,90 @@ int wmain(int argc, wchar_t **argv) {
             app.confirmInvitation(fourth, qq, true);
             assert(!app.state().groups.get(qq).hasMember("U4"));
             const AccountRefFanLX fresh{ServiceTypeFanLX::QQ, "0099"};
-            app.registerUser({"U99", "新注册", "2000-01-01", "2026-09-14", "吉林"},
+            // 注册时用户自选密码，随后用「用户名 + 密码」登录；不再是"写完就能登"。
+            app.registerUser({"U99", "新注册", "2000-01-01", "2026-09-14", "吉林", "pw-new"},
                              {{"U99", ServiceTypeFanLX::QQ, "0099", true},
                               {"U99", ServiceTypeFanLX::Wechat, "wx0099", false}});
-            app.login(fresh);
+            failsFanLX([&] { app.login(fresh, "wrong-pw"); });   // 密码不符必须登录不上
+            app.login(fresh, "pw-new");
             assert(!app.state().accounts.isSubscribed("U99", ServiceTypeFanLX::Wechat));
             app.subscribe(fresh, ServiceTypeFanLX::Wechat);
             app.createGroup(fresh, {GroupModeFanLX::QQ, "new"});
+            // 改密后旧密码立即失效，新密码可用
+            app.changePassword(fresh, "pw-new", "pw-next");
+            app.logout(fresh, true);
+            failsFanLX([&] { app.login(fresh, "pw-new"); });
+            app.login(fresh, "pw-next");
             app.logout(fresh, true);
             failsFanLX([&] { app.updateProfile(fresh, "bad", "bad"); });
             app.saveAndClose();
+        }
+        // 本次改造：微X 是 QQ/微信/微博 的上层账号。
+        //   · 注册只创建微X（不捆绑任何下级服务）；
+        //   · 只有"已登录微X"的会话才能开通下级服务；
+        //   · 号码按服务各自唯一：QQ 与微博必须共用同一个号码，不同服务之间允许同号
+        //     （服务端按"服务 + 号码"分通道，客户端聊天库也按服务分目录）。
+        {
+            auto dir = root / L"weix";
+            initializeFanLX(dir);
+            PersistenceApplicationFanLX app(dir, fixedTimeFanLX);
+            const AccountRefFanLX weix{ServiceTypeFanLX::WeiX, "500001"};
+            app.registerWeiXUser({"U500", "微X用户", "2000-01-01", "2026-10-01", "吉林", "pw-500"},
+                                 "500001");
+            {
+                const auto snapshot = app.snapshot();
+                std::size_t owned = 0;
+                for (const auto &account : snapshot.accounts)
+                    if (account.userId == "U500") {
+                        ++owned;
+                        assert(account.service == ServiceTypeFanLX::WeiX); // 注册不捆绑任何服务账号
+                    }
+                assert(owned == 1);
+                // 微X 自身注册即开通（否则注册完无法登录），下级服务一个都没开通。
+                assert(app.state().accounts.isSubscribed("U500", ServiceTypeFanLX::WeiX));
+                assert(!app.state().accounts.isSubscribed("U500", ServiceTypeFanLX::QQ));
+                assert(!app.state().accounts.isSubscribed("U500", ServiceTypeFanLX::Wechat));
+                assert(!app.state().accounts.isSubscribed("U500", ServiceTypeFanLX::Weibo));
+            }
+            // 没有登录微X：开通请求必须被拒（"只有登录微X后才能开通三种服务"）。
+            failsFanLX([&] { app.activateService(weix, ServiceTypeFanLX::QQ, "500001"); });
+            // 用微X号登录后逐个开通。
+            app.login(weix, "pw-500", true);
+            app.activateService(weix, ServiceTypeFanLX::QQ, "500001");
+            // QQ 与微博必须同号：先给微博一个不同的号码必须被拒。
+            failsFanLX([&] { app.activateService(weix, ServiceTypeFanLX::Weibo, "999999"); });
+            app.activateService(weix, ServiceTypeFanLX::Weibo, "500001");
+            app.activateService(weix, ServiceTypeFanLX::Wechat, "wx_500001");
+            assert(app.state().accounts.isAccountSubscribed(ServiceTypeFanLX::QQ, "500001"));
+            assert(app.state().accounts.isAccountSubscribed(ServiceTypeFanLX::Weibo, "500001"));
+            assert(app.state().accounts.isAccountSubscribed(ServiceTypeFanLX::Wechat, "wx_500001"));
+            assert(app.state().accounts.accountByAccountId(ServiceTypeFanLX::Weibo, "500001").sharedId);
+            assert(!app.state().accounts.accountByAccountId(ServiceTypeFanLX::Wechat, "wx_500001").sharedId);
+            // 重复开通同一个服务被拒；微X 自己不能被"开通"。
+            failsFanLX([&] { app.activateService(weix, ServiceTypeFanLX::QQ, "500001"); });
+            failsFanLX([&] { app.activateService(weix, ServiceTypeFanLX::WeiX, "500002"); });
+            // 另一个人的微信可以使用与 QQ 相同的号码：号码只在**各自服务内**唯一，
+            // 服务端按"服务 + 号码"分通道，客户端存储目录也带服务名，因此不会串消息。
+            app.registerWeiXUser({"U501", "另一位", "2000-01-01", "2026-10-01", "吉林", "pw-501"},
+                                 "500002");
+            const AccountRefFanLX otherWeix{ServiceTypeFanLX::WeiX, "500002"};
+            app.login(otherWeix, "pw-501", true);
+            app.activateService(otherWeix, ServiceTypeFanLX::QQ, "500002");
+            app.activateService(otherWeix, ServiceTypeFanLX::Wechat, "500002");
+            assert(app.state().accounts.hasAccount(ServiceTypeFanLX::QQ, "500002"));
+            assert(app.state().accounts.hasAccount(ServiceTypeFanLX::Wechat, "500002"));
+            // 微博也能开通并直接单聊（没有群）；同一用户允许 QQ 与微博共号（课程约定）。
+            app.activateService(otherWeix, ServiceTypeFanLX::Weibo, "500002");
+            assert(app.state().accounts.accountByAccountId(ServiceTypeFanLX::Weibo, "500002").sharedId);
+            // 好友只能在同一服务内建立：QQ 身份不能把微信账号加成好友（跨分区关系写不进去）。
+            failsFanLX([&] { app.addFriend({ServiceTypeFanLX::QQ, "500001"},
+                                          {ServiceTypeFanLX::Wechat, "wx_500001"}); });
+            app.saveAndClose();
+            // 重新打开：微X 与三个下级服务都还在（分区格式能落盘也能读回）。
+            PersistenceApplicationFanLX reopened(dir);
+            assert(reopened.state().accounts.hasAccount(ServiceTypeFanLX::WeiX, "500001"));
+            assert(reopened.state().accounts.isAccountSubscribed(ServiceTypeFanLX::QQ, "500001"));
+            reopened.saveAndClose();
         }
         // 候选中已经修改，再抛异常，在线状态与文件依然保持原样。
         {
@@ -389,7 +491,7 @@ int wmain(int argc, wchar_t **argv) {
             auto dir = root / L"external";
             initializeFanLX(dir);
             PersistenceApplicationFanLX app(dir, fixedTimeFanLX);
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             overwriteFanLX(dir / L"state.json", "external corruption");
             failsFanLX([&] { app.switchPolicy(owner, qq, GroupModeFanLX::Wechat); });
             failsFanLX([&] { app.updateProfile(owner, "bad", "bad"); });
@@ -438,7 +540,7 @@ int wmain(int argc, wchar_t **argv) {
             auto dir = root / L"read-only";
             initializeFanLX(dir);
             PersistenceApplicationFanLX app(dir, fixedTimeFanLX);
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             const auto file = dir / L"state.json";
             const auto before = AtomicFileWriterFanLX::read(file);
             assert(SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_READONLY));
@@ -476,7 +578,7 @@ int wmain(int argc, wchar_t **argv) {
             seed.groups.front().applications.front().createdAtUtc = "2026-09-01T00:00:00Z";
             seed.groups.front().applications.front().expiresAtUtc = "2026-09-02T00:00:00Z";
             app.importInitial(seed);
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             app.approveApplication(owner, qq, fourth);
             assert(!app.state().groups.get(qq).hasMember("U4"));
             assert(app.snapshot().groups.front().applications.front().status == "Expired");
@@ -491,7 +593,7 @@ int wmain(int argc, wchar_t **argv) {
                     throw std::runtime_error("interrupted");
                 }
             });
-            app.login(owner);
+            app.login(owner, demoPasswordFanLX(owner.accountId));
             const auto before = SnapshotCodecFanLX::encode(app.snapshot());
             bool indeterminate = false;
             try {

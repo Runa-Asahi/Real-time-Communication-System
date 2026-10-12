@@ -43,7 +43,7 @@ nlohmann::json scenarioFanLX(const std::filesystem::path &directory, bool enable
         app.importInitial(demoSeedFanLX());
         app.setQueryCacheEnabled(enabled);
         for (const auto &actor : {owner, admin, member, outsider})
-            app.login(actor, true);
+            app.login(actor, demoPasswordFanLX(actor.accountId), true);
         const auto *address = &app.state().groups.get(group);
         const auto *discussion = &app.state().groups.getDiscussion(group, "D1");
         const auto check = [&] {
@@ -121,7 +121,7 @@ nlohmann::json scenarioFanLX(const std::filesystem::path &directory, bool enable
         app.logout(owner, true);
         failsFanLX([&] { app.queryGroupMembers(owner, group); });
         failsFanLX([&] { app.queryFriendAccounts(owner); });
-        app.login(owner, true);
+        app.login(owner, demoPasswordFanLX(owner.accountId), true);
         app.transferOwnership(owner, group, admin);
         app.leave(owner, group);
         failsFanLX([&] { app.queryGroupMembers(owner, group); });
