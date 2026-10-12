@@ -1,5 +1,6 @@
 #include "gui/FriendPageFanLX.h"
 #include "gui/DomainControllerFanLX.h"
+#include "gui/FriendChromeFanLX.h"
 #include "gui/PageKitFanLX.h"
 #include <QComboBox>
 #include <QGridLayout>
@@ -10,6 +11,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -47,6 +49,14 @@ void fillListFanLX(QListWidget *list, const QStringList &rows, const QString &pl
 
 FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *parent)
     : QWidget(parent), controllerFanLX(controller) {
+    setObjectName(QStringLiteral("friendPageFanLX"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    const QColor pageBg(QStringLiteral("#f3f5f8"));
+    setAutoFillBackground(true);
+    auto pagePalette = palette();
+    pagePalette.setColor(QPalette::Window, pageBg);
+    setPalette(pagePalette);
+
     stackFanLX = new QStackedWidget(this);
     kit::setHomePage(stackFanLX, buildHomeFanLX());
     kit::addSubPage(stackFanLX, QStringLiteral("添加好友（发送申请）"), buildAddBodyFanLX());
@@ -57,6 +67,18 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(6, 6, 6, 6);
     outer->addWidget(stackFanLX);
+    for (auto *scroll : findChildren<QScrollArea *>()) {
+        scroll->setAutoFillBackground(true);
+        scroll->viewport()->setAutoFillBackground(true);
+        auto viewportPalette = scroll->viewport()->palette();
+        viewportPalette.setColor(QPalette::Window, pageBg);
+        scroll->viewport()->setPalette(viewportPalette);
+    }
+    auto *rows = new FriendRowDelegateFanLX(this);
+    prepareFriendRowListFanLX(friendListFanLX, QStringLiteral("friendListFanLX"));
+    prepareFriendRowListFanLX(resultListFanLX, QStringLiteral("friendResultListFanLX"));
+    friendListFanLX->setItemDelegate(rows);
+    resultListFanLX->setItemDelegate(rows);
 
     // 当前平台切换与任何好友写操作成功后都要重读列表。
     connect(controllerFanLX, &DomainControllerFanLX::dataChangedFanLX, this, &FriendPageFanLX::refreshFanLX);
@@ -73,14 +95,11 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
     friendListFanLX->setMinimumHeight(220);
     listHintFanLX = kit::hintLabel(home);
 
-    auto *addNav = kit::primaryButton(QStringLiteral("＋ 添加好友"), home);
-    requestsNavButtonFanLX = kit::navButton(QStringLiteral("好友申请  ›"), home);
-    remarkNavButtonFanLX = kit::navButton(QStringLiteral("备注 / 标签"), home);
-    removeButtonFanLX = kit::dangerButton(QStringLiteral("删除好友"), home);
-    auto *queryNav = kit::navButton(QStringLiteral("共同好友  ›"), home);
-    requestsNavButtonFanLX->setMinimumHeight(34);
-    remarkNavButtonFanLX->setMinimumHeight(34);
-    queryNav->setMinimumHeight(34);
+    auto *addNav = friendPrimaryButtonFanLX(QStringLiteral("＋ 添加好友"), home);
+    requestsNavButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("好友申请  ›"), home);
+    remarkNavButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("备注 / 标签"), home);
+    removeButtonFanLX = friendDangerButtonFanLX(QStringLiteral("删除好友"), home);
+    auto *queryNav = friendSecondaryButtonFanLX(QStringLiteral("共同好友  ›"), home);
     auto *row = new QHBoxLayout();
     row->addWidget(addNav);
     row->addWidget(requestsNavButtonFanLX);
@@ -111,7 +130,7 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
             listHintFanLX->setText(QStringLiteral("请先在列表里选中要删除的好友"));
             return;
         }
-        if (QMessageBox::question(this, QStringLiteral("删除好友"),
+        if (QMessageBox::question(friendDialogParentFanLX(this), QStringLiteral("删除好友"),
                                   QStringLiteral("确定删除好友 %1？").arg(peer)) == QMessageBox::Yes)
             controllerFanLX->removeFriend(peer);
     });
@@ -128,7 +147,7 @@ QWidget *FriendPageFanLX::buildAddBodyFanLX() {
     peerEditFanLX->setPlaceholderText(QStringLiteral("对方在当前服务的号码，如 2026002"));
     noteEditFanLX = new QLineEdit(byNumber);
     noteEditFanLX->setPlaceholderText(QStringLiteral("附言（可选），如：我是你的同学"));
-    addButtonFanLX = kit::primaryButton(QStringLiteral("发送好友申请"), byNumber);
+    addButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("发送好友申请"), byNumber);
     auto *numberForm = new QGridLayout(byNumber);
     numberForm->addWidget(new QLabel(QStringLiteral("号码"), byNumber), 0, 0);
     numberForm->addWidget(peerEditFanLX, 0, 1);
@@ -141,7 +160,7 @@ QWidget *FriendPageFanLX::buildAddBodyFanLX() {
     sourceServiceComboFanLX = new QComboBox(byService);
     candidateListFanLX = new QListWidget(byService);
     candidateListFanLX->setMinimumHeight(120);
-    addFromServiceButtonFanLX = kit::primaryButton(QStringLiteral("向选中的人发送申请"), byService);
+    addFromServiceButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("向选中的人发送申请"), byService);
     auto *serviceRow = new QHBoxLayout();
     serviceRow->addWidget(new QLabel(QStringLiteral("来源服务"), byService));
     serviceRow->addWidget(sourceServiceComboFanLX);
@@ -186,11 +205,10 @@ QWidget *FriendPageFanLX::buildRequestsBodyFanLX() {
     incomingListFanLX = new QListWidget(body);
     outgoingListFanLX = new QListWidget(body);
     temporaryListFanLX = new QListWidget(body);
-    acceptButtonFanLX = kit::primaryButton(QStringLiteral("同意"), body);
-    rejectButtonFanLX = kit::dangerButton(QStringLiteral("拒绝"), body);
-    cancelButtonFanLX = kit::dangerButton(QStringLiteral("撤回"), body);
-    auto *refresh = kit::navButton(QStringLiteral("刷新"), body);
-    refresh->setMinimumHeight(30);
+    acceptButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("同意"), body);
+    rejectButtonFanLX = friendDangerButtonFanLX(QStringLiteral("拒绝"), body);
+    cancelButtonFanLX = friendDangerButtonFanLX(QStringLiteral("撤回"), body);
+    auto *refresh = friendSecondaryButtonFanLX(QStringLiteral("刷新"), body);
     requestsHintFanLX = kit::hintLabel(body);
 
     auto *incomingBox = new QGroupBox(QStringLiteral("收到的申请（对方 ｜ 附言 ｜ 时间）"), body);
@@ -286,7 +304,7 @@ QWidget *FriendPageFanLX::buildRemarkBodyFanLX() {
     remarkEditFanLX->setPlaceholderText(QStringLiteral("备注名"));
     tagEditFanLX = new QLineEdit(body);
     tagEditFanLX->setPlaceholderText(QStringLiteral("分组标签，如 同学"));
-    remarkButtonFanLX = kit::primaryButton(QStringLiteral("保存备注/标签"), body);
+    remarkButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("保存备注/标签"), body);
 
     auto *form = new QGridLayout();
     form->addWidget(new QLabel(QStringLiteral("好友"), body), 0, 0);
@@ -311,12 +329,10 @@ QWidget *FriendPageFanLX::buildQueryBodyFanLX() {
     auto *body = new QWidget();
     commonPeerEditFanLX = new QLineEdit(body);
     commonPeerEditFanLX->setPlaceholderText(QStringLiteral("同一服务内对方的号码"));
-    commonButtonFanLX = kit::primaryButton(QStringLiteral("查询同服务共同好友"), body);
+    commonButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("查询同服务共同好友"), body);
     targetServiceComboFanLX = new QComboBox(body);
-    recommendButtonFanLX = kit::navButton(QStringLiteral("推荐好友"), body);
-    crossCommonButtonFanLX = kit::navButton(QStringLiteral("跨服务共同好友"), body);
-    recommendButtonFanLX->setMinimumHeight(34);
-    crossCommonButtonFanLX->setMinimumHeight(34);
+    recommendButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("推荐好友"), body);
+    crossCommonButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("跨服务共同好友"), body);
     recommendButtonFanLX->setToolTip(QStringLiteral("把另一个服务里的好友推荐到当前服务（查询后需手动添加）"));
     resultListFanLX = new QListWidget(body);
     resultListFanLX->setMinimumHeight(140);
@@ -382,7 +398,7 @@ void FriendPageFanLX::openRemarkPageFanLX() {
 void FriendPageFanLX::refreshFanLX() {
     if (!controllerFanLX->opened())
         return;
-    kit::applyAccent(this, controllerFanLX->currentService());
+    applyFriendChromeFanLX(this, controllerFanLX->currentService());
     const auto selected = selectedPeerFanLX();
     friendListFanLX->clear();
     friendListFanLX->addItems(controllerFanLX->friendRows());
