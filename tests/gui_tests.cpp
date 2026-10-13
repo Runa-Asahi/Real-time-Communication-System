@@ -11,10 +11,26 @@
 #include "network/ServerAccountRegistrarFanLX.h"
 #include "gui/ChatControllerFanLX.h"
 #include "gui/ConversationModelFanLX.h"
+#include "gui/HistoryDialogFanLX.h"
 #include "db/SqliteChatRepositoryFanLX.h"
 #include "persistence/DemoSeedFanLX.h"
 #include "persistence/PersistenceApplicationFanLX.h"
+#include <QApplication>
+#include <QCheckBox>
+#include <QClipboard>
+#include <QComboBox>
 #include <QCoreApplication>
+#include <QDateTimeEdit>
+#include <QGuiApplication>
+#include <QHeaderView>
+#include <QImage>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QStackedWidget>
+#include <QTableWidget>
+#include <QTimeZone>
 #include <QTimer>
 #include <chrono>
 #include <cassert>
@@ -68,6 +84,46 @@ void t60ConversationModelFanLX() {
     assert(model.keyAt(1) == QStringLiteral("g|1001"));
     assert(model.keyAt(9).isEmpty());
     std::cout << "[ok] t60 conversation model" << std::endl;
+}
+
+// 好友/群图标打进现有 qrc。模型仍保留类型前缀和未读数，列表委托只负责把前缀画成图标。
+void t71ConversationIconsFanLX() {
+    const QImage friendIcon(QStringLiteral(":/conversation/111.png"));
+    const QImage groupIcon(QStringLiteral(":/conversation/222.png"));
+    assert(!friendIcon.isNull());
+    assert(!groupIcon.isNull());
+    assert(friendIcon.width() == 997 && friendIcon.height() == 991);
+    assert(groupIcon.width() == 492 && groupIcon.height() == 472);
+
+    ConversationListModelFanLX model;
+    ConversationItemFanLX direct;
+    direct.key = QStringLiteral("d|2026001|2026002");
+    direct.title = QStringLiteral("2026002");
+    direct.kindText = QStringLiteral("好友");
+    direct.kindColor = QStringLiteral("#0b6bcb");
+    direct.subtitle = QStringLiteral("你好");
+    direct.unread = 2;
+    ConversationItemFanLX group;
+    group.key = QStringLiteral("g|1001");
+    group.title = QStringLiteral("1001");
+    group.kindText = QStringLiteral("群");
+    group.kindColor = QStringLiteral("#7b1fa2");
+    group.group = true;
+    group.subtitle = QString();
+    group.unread = 0;
+    model.setItems({direct, group});
+    assert(model.data(model.index(0), Qt::DisplayRole).toString() == QStringLiteral("[好友] 2026002"));
+    assert(model.data(model.index(1), Qt::DisplayRole).toString() == QStringLiteral("[群] 1001"));
+    assert(model.data(model.index(0), ConversationListModelFanLX::KindTextRoleFanLX).toString() ==
+           QStringLiteral("好友"));
+    assert(model.data(model.index(1), ConversationListModelFanLX::KindTextRoleFanLX).toString() ==
+           QStringLiteral("群"));
+    assert(model.data(model.index(0), ConversationListModelFanLX::UnreadRoleFanLX).toInt() == 2);
+    assert(model.data(model.index(1), ConversationListModelFanLX::UnreadRoleFanLX).toInt() == 0);
+    assert(model.data(model.index(0), ConversationListModelFanLX::SubtitleRoleFanLX).toString() ==
+           QStringLiteral("你好"));
+    assert(model.data(model.index(1), Qt::ToolTipRole).toString() == QStringLiteral("群：1001"));
+    std::cout << "[ok] t71 conversation icons are packaged and model labels stay" << std::endl;
 }
 
 // 消息模型：状态文案与"自身/失败/待发送"标记必须可见（界面据此区分语义）。
@@ -864,6 +920,446 @@ void t69ServerSideRegistrationFanLX() {
     }
 }
 
+qint64 unreadOfFanLX(const ChatControllerFanLX &controller, const QString &key) {
+    for (const auto &item : controller.conversations())
+        if (item.key == key)
+            return item.unread;
+    return -1;
+}
+
+bool hasBodyFanLX(const ChatControllerFanLX &controller, const QString &body) {
+    for (const auto &item : controller.messages())
+        if (item.body == body)
+            return true;
+    return false;
+}
+
+// 未读角标的数据源是会话摘要里的 unread，不是界面自己记的数。
+// 打开会话时历史尚未返回，不能把未读清掉；历史回到“最新一页”并写入已读游标之后才归零。
+void t70UnreadBadgeFanLX() {
+    using namespace std::chrono_literals;
+    {
+        ChatControllerFanLX cold;
+        QString error;
+        QObject::connect(&cold, &ChatControllerFanLX::errorFanLX, [&](const QString &detail) { error = detail; });
+        assert(!cold.markRead(QStringLiteral("d|2026001|2026002"), 4));
+        assert(error.contains(QStringLiteral("未能提交")));
+        assert(cold.conversations().isEmpty());
+        std::cout << "[ok] t70 markRead without a database does not report success" << std::endl;
+    }
+
+    const auto root = temporaryRootFanLX() / "gui-unread";
+    std::filesystem::create_directories(root);
+    PersistenceApplicationFanLX app(root / "domain");
+    app.initialize();
+    app.importInitial(demoSeedFanLX());
+    ImServerFanLX server(app.state(), root / "server", 0);
+    const auto port = server.port();
+    assert(port != 0);
+    QTimer ticker;
+    QObject::connect(&ticker, &QTimer::timeout, [&server] { server.tick(); });
+    ticker.start(20);
+
+    const auto sharedRoot = QString::fromStdWString(root.wstring());
+    ChatControllerFanLX reader;
+    ChatControllerFanLX sender;
+    reader.configure(QStringLiteral("127.0.0.1"), port, QStringLiteral("2026001"),
+                     QString::fromStdString(demoPasswordFanLX("2026001")), sharedRoot, true);
+    sender.configure(QStringLiteral("127.0.0.1"), port, QStringLiteral("2026002"),
+                     QString::fromStdString(demoPasswordFanLX("2026002")), sharedRoot, true);
+    QString failure;
+    assert(reader.start(&failure) && failure.isEmpty());
+    assert(sender.start(&failure) && failure.isEmpty());
+
+    const auto pump = [&](auto predicate, const char *label) {
+        const auto deadline = std::chrono::steady_clock::now() + 15s;
+        while (!predicate()) {
+            QCoreApplication::processEvents();
+            server.tick();
+            if (std::chrono::steady_clock::now() > deadline) {
+                std::cout << "[gui pump timeout] " << label << " reader=[" << reader.lastError().toStdString()
+                          << "] sender=[" << sender.lastError().toStdString() << "]" << std::endl;
+                throw std::runtime_error(std::string("GUI 未读等待超时：") + label);
+            }
+            std::this_thread::sleep_for(5ms);
+        }
+    };
+    pump([&] { return reader.online() && sender.online(); }, "online");
+    pump([&] { return reader.storageBackend() == QStringLiteral("sqlite"); }, "reader-storage");
+    pump([&] { return sender.storageBackend() == QStringLiteral("sqlite"); }, "sender-storage");
+
+    const QString direct = QStringLiteral("d|2026001|2026002");
+    const QString group = QStringLiteral("g|1001");
+    const QString directBody = QStringLiteral("unread-direct-1");
+    const QString groupBody = QStringLiteral("unread-group-1");
+    sender.openConversation(direct);
+    assert(sender.sendText(direct, 0, directBody));
+    sender.openConversation(group);
+    assert(sender.sendText(group, 0, groupBody));
+
+    pump([&] { return unreadOfFanLX(reader, direct) >= 1 && unreadOfFanLX(reader, group) >= 1; },
+         "both-unread");
+    const auto groupUnread = unreadOfFanLX(reader, group);
+    const auto directUnread = unreadOfFanLX(reader, direct);
+
+    // 历史返回前，未读数必须保持原值（不能用空消息列表上的序号 0 假装已读）。
+    reader.openConversation(direct);
+    assert(reader.messages().isEmpty());
+    assert(unreadOfFanLX(reader, direct) == directUnread);
+    assert(unreadOfFanLX(reader, group) == groupUnread);
+    pump([&] { return hasBodyFanLX(reader, directBody) && unreadOfFanLX(reader, direct) == 0; },
+         "direct-read");
+    assert(unreadOfFanLX(reader, group) == groupUnread);
+
+    // 先打开群、立刻切回单聊：群的迟到历史不能把群标成已读，也不能写进单聊。
+    reader.openConversation(group);
+    reader.openConversation(direct);
+    pump([&] {
+        return hasBodyFanLX(reader, directBody) && !hasBodyFanLX(reader, groupBody) &&
+               unreadOfFanLX(reader, direct) == 0 && unreadOfFanLX(reader, group) == groupUnread;
+    }, "stale-group-history");
+
+    // 停在最新时，新消息加载进当前页后应再次确认已读；另一个会话的未读不动。
+    const QString directAgain = QStringLiteral("unread-direct-2");
+    sender.openConversation(direct);
+    assert(sender.sendText(direct, 0, directAgain));
+    pump([&] {
+        return hasBodyFanLX(reader, directAgain) && unreadOfFanLX(reader, direct) == 0 &&
+               unreadOfFanLX(reader, group) == groupUnread;
+    }, "new-message-while-latest");
+
+    // 翻到更早一页时，新消息只增加未读，不自动清零。回到最新页之后才确认。
+    assert(reader.requestHistory(direct, QString(), QString(), 1, 0));
+    pump([&] { return reader.historyHasMore() && reader.messages().size() == 1; }, "latest-page-of-one");
+    assert(reader.requestEarlier());
+    assert(!reader.followingLatest());
+    pump([&] { return reader.messages().size() > 1 && !reader.followingLatest(); }, "earlier-page");
+    const QString whileOld = QStringLiteral("unread-while-old");
+    assert(sender.sendText(direct, 0, whileOld));
+    pump([&] {
+        return unreadOfFanLX(reader, direct) >= 1 && unreadOfFanLX(reader, group) == groupUnread &&
+               !reader.followingLatest() && !hasBodyFanLX(reader, whileOld);
+    }, "unread-while-reading-history");
+    assert(reader.requestLatest());
+    pump([&] {
+        return reader.followingLatest() && hasBodyFanLX(reader, whileOld) && unreadOfFanLX(reader, direct) == 0 &&
+               unreadOfFanLX(reader, group) == groupUnread;
+    }, "read-after-return-latest");
+
+    ConversationListModelFanLX model;
+    model.setItems(reader.conversations());
+    bool sawDirect = false;
+    bool sawGroup = false;
+    for (int row = 0; row < model.rowCount(); ++row) {
+        const auto key = model.data(model.index(row), ConversationListModelFanLX::KeyRoleFanLX).toString();
+        const auto unread = model.data(model.index(row), ConversationListModelFanLX::UnreadRoleFanLX).toLongLong();
+        if (key == direct) {
+            sawDirect = true;
+            assert(unread == 0);
+        }
+        if (key == group) {
+            sawGroup = true;
+            assert(unread == groupUnread);
+        }
+    }
+    assert(sawDirect && sawGroup);
+
+    int generation = 0;
+    QObject::connect(&reader, &ChatControllerFanLX::conversationsChangedFanLX, [&] { ++generation; });
+    const auto seen = generation;
+    assert(reader.requestConversations());
+    pump([&] { return generation > seen; }, "refresh-again");
+    assert(unreadOfFanLX(reader, direct) == 0);
+    assert(unreadOfFanLX(reader, group) == groupUnread);
+    const auto seenAgain = generation;
+    assert(reader.requestConversations());
+    pump([&] { return generation > seenAgain; }, "refresh-third");
+    assert(unreadOfFanLX(reader, direct) == 0);
+    assert(unreadOfFanLX(reader, group) == groupUnread);
+
+    QString disconnected;
+    QObject::connect(&reader, &ChatControllerFanLX::errorFanLX, [&](const QString &detail) { disconnected = detail; });
+    reader.stop();
+    assert(!reader.markRead(direct, 9));
+    assert(disconnected.contains(QStringLiteral("未能提交")));
+    assert(unreadOfFanLX(reader, direct) == -1);
+
+    sender.stop();
+    ticker.stop();
+    std::cout << "[ok] t70 unread badge follows the read cursor" << std::endl;
+}
+
+void expectEqualFanLX(const QString &actual, const QString &expected, const char *label) {
+    if (actual == expected)
+        return;
+    std::cerr << "[t72] " << label << " actual=[" << actual.toStdString() << "] expected=[" << expected.toStdString()
+              << "]\n";
+    assert(false);
+}
+
+// 历史查询窗口：会话键只放在条目数据里，时间控件提交 UTC，结果是只读表格。
+// 不启动服务器；queryId 过期丢弃仍在 ChatControllerFanLX::drainEvents。
+void t72HistoryDialogFanLX() {
+    HistoryDialogFanLX dialog;
+    auto *combo = dialog.findChild<QComboBox *>(QStringLiteral("historyConversation"));
+    auto *sender = dialog.findChild<QLineEdit *>(QStringLiteral("historySender"));
+    auto *keyword = dialog.findChild<QLineEdit *>(QStringLiteral("historyKeyword"));
+    auto *time = dialog.findChild<QCheckBox *>(QStringLiteral("historyTimeEnabled"));
+    auto *from = dialog.findChild<QDateTimeEdit *>(QStringLiteral("historyFrom"));
+    auto *to = dialog.findChild<QDateTimeEdit *>(QStringLiteral("historyTo"));
+    auto *page = dialog.findChild<QSpinBox *>(QStringLiteral("historyPageSize"));
+    auto *search = dialog.findChild<QPushButton *>(QStringLiteral("historySearch"));
+    auto *reset = dialog.findChild<QPushButton *>(QStringLiteral("historyReset"));
+    auto *cancel = dialog.findChild<QPushButton *>(QStringLiteral("historyCancel"));
+    auto *earlier = dialog.findChild<QPushButton *>(QStringLiteral("historyEarlier"));
+    auto *table = dialog.findChild<QTableWidget *>(QStringLiteral("historyResults"));
+    auto *status = dialog.findChild<QLabel *>(QStringLiteral("historyEmpty"));
+    auto *detail = dialog.findChild<QLabel *>(QStringLiteral("historyStatusDetail"));
+    auto *summary = dialog.findChild<QLabel *>(QStringLiteral("historySummary"));
+    assert(combo && sender && keyword && time && from && to && page);
+    assert(search && reset && cancel && earlier && table && status && detail && summary);
+    auto *stack = qobject_cast<QStackedWidget *>(table->parentWidget());
+    assert(stack);
+
+    assert(!combo->isEditable());
+    assert(dialog.minimumWidth() >= 760);
+    assert(dialog.minimumHeight() >= 560);
+    assert(dialog.width() >= 1000);
+    assert(dialog.height() >= 720);
+    assert(page->minimum() == 1);
+    assert(page->maximum() == 200);
+    assert(page->value() == 50);
+    page->setValue(500);
+    assert(page->value() == 200);
+    page->setValue(0);
+    assert(page->value() == 1);
+    assert(table->columnCount() == 4);
+    assert(table->editTriggers() == QAbstractItemView::NoEditTriggers);
+    assert(!table->isSortingEnabled());
+    expectEqualFanLX(table->horizontalHeaderItem(0)->text(), QStringLiteral("服务器时间"), "time header");
+    expectEqualFanLX(table->horizontalHeaderItem(3)->text(), QStringLiteral("消息内容"), "body header");
+    assert(table->horizontalHeader()->sectionResizeMode(3) == QHeaderView::Stretch);
+    assert(status->text().contains(QStringLiteral("尚未查询")));
+
+    const auto direct = QStringLiteral("d|2026001|2026002");
+    const auto group = QStringLiteral("g|1001");
+    const auto otherGroup = QStringLiteral("g|1005");
+    dialog.setConversations({direct, group, otherGroup, direct, QString()});
+    assert(combo->count() == 4);
+    expectEqualFanLX(combo->itemText(0), QStringLiteral("所有会话（跨会话检索）"), "all label");
+    assert(combo->itemData(0).toString().isEmpty());
+    expectEqualFanLX(combo->itemText(1), QStringLiteral("好友会话 · 2026001 ↔ 2026002"), "direct label");
+    expectEqualFanLX(combo->itemData(1).toString(), direct, "direct key");
+    expectEqualFanLX(combo->itemText(2), QStringLiteral("群聊 · 1001"), "group label");
+    expectEqualFanLX(combo->itemData(2).toString(), group, "group key");
+    expectEqualFanLX(combo->itemText(3), QStringLiteral("群聊 · 1005"), "other group label");
+    for (int index = 0; index < combo->count(); ++index)
+        assert(!combo->itemText(index).contains(QLatin1Char('|')));
+
+    dialog.setCurrentConversation(direct);
+    expectEqualFanLX(dialog.conversationKey(), direct, "selected direct key");
+    assert(dialog.conversationKey() != combo->currentText());
+    dialog.setCurrentConversation(QString());
+    assert(dialog.conversationKey().isEmpty());
+    assert(combo->currentIndex() == 0);
+
+    dialog.setCurrentConversation(QStringLiteral("not-a-key"));
+    expectEqualFanLX(dialog.conversationKey(), QStringLiteral("not-a-key"), "unmatched key");
+    expectEqualFanLX(combo->currentText(), QStringLiteral("未列出的会话"), "unmatched label");
+    assert(combo->currentIndex() != 0);
+    dialog.setConversations({group});
+    expectEqualFanLX(dialog.conversationKey(), QStringLiteral("not-a-key"), "unmatched kept");
+    assert(combo->findData(group) >= 0);
+
+    dialog.setCurrentConversation(otherGroup);
+    combo->setCurrentIndex(combo->findData(group));
+    dialog.setConversations({group});
+    expectEqualFanLX(dialog.conversationKey(), group, "refresh keeps data");
+    reset->click();
+    assert(dialog.conversationKey().isEmpty());
+
+    dialog.setConversations({direct, group, otherGroup});
+    dialog.setCurrentConversation(group);
+    combo->setCurrentIndex(0);
+    reset->click();
+    expectEqualFanLX(dialog.conversationKey(), group, "reset preferred");
+
+    sender->setText(QStringLiteral("  2026001  "));
+    keyword->setText(QStringLiteral("  %_  "));
+    assert(dialog.senderFilter() == QStringLiteral("2026001"));
+    assert(dialog.keyword() == QStringLiteral("  %_  "));
+    time->setChecked(false);
+    assert(!from->isEnabled());
+    assert(!to->isEnabled());
+    assert(dialog.fromText().isEmpty());
+    assert(dialog.toText().isEmpty());
+    from->setDateTime(QDateTime(QDate(2026, 9, 2), QTime(3, 4, 5), QTimeZone::utc()));
+    to->setDateTime(QDateTime(QDate(2026, 9, 1), QTime(0, 0, 0), QTimeZone::utc()));
+    dialog.setCurrentConversation(QString());
+    sender->clear();
+    keyword->clear();
+    expectEqualFanLX(dialog.filterErrorFanLX(),
+                     QStringLiteral("跨会话检索需要至少一个条件：发送者、关键词或时间范围。"), "cross session");
+    keyword->setText(QStringLiteral("%"));
+    assert(dialog.filterErrorFanLX().isEmpty());
+    keyword->clear();
+    sender->setText(QStringLiteral("   "));
+    expectEqualFanLX(dialog.filterErrorFanLX(),
+                     QStringLiteral("跨会话检索需要至少一个条件：发送者、关键词或时间范围。"), "blank sender");
+
+    time->setChecked(true);
+    assert(from->isEnabled());
+    assert(to->isEnabled());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+    assert(from->timeZone() == QTimeZone::utc());
+    assert(to->timeZone() == QTimeZone::utc());
+#endif
+    const auto start = QDateTime(QDate(2026, 9, 1), QTime(0, 0, 0), QTimeZone::utc());
+    const auto end = QDateTime(QDate(2026, 9, 1), QTime(1, 2, 3), QTimeZone::utc());
+    from->setDateTime(start);
+    to->setDateTime(end);
+    assert(from->date() == QDate(2026, 9, 1));
+    assert(from->time() == QTime(0, 0, 0));
+    assert(to->time() == QTime(1, 2, 3));
+    expectEqualFanLX(dialog.fromText(), QStringLiteral("2026-09-01T00:00:00Z"), "from utc");
+    expectEqualFanLX(dialog.toText(), QStringLiteral("2026-09-01T01:02:03Z"), "to utc");
+    assert(dialog.filterErrorFanLX().isEmpty());
+    to->setDateTime(start);
+    assert(dialog.filterErrorFanLX().isEmpty());
+    from->setDateTime(end);
+    to->setDateTime(start);
+    assert(dialog.fromText() > dialog.toText());
+    expectEqualFanLX(dialog.filterErrorFanLX(),
+                     QStringLiteral("起始时间不能晚于结束时间，并且需要能转换成服务器 UTC（YYYY-MM-DDTHH:mm:ssZ）。"),
+                     "reversed range");
+    time->setChecked(false);
+    assert(dialog.fromText().isEmpty());
+    assert(dialog.toText().isEmpty());
+    keyword->setText(QStringLiteral("literal"));
+    assert(dialog.filterErrorFanLX().isEmpty());
+
+    dialog.setCurrentConversation(group);
+    page->setValue(10);
+    sender->setText(QStringLiteral("2026009"));
+    int cancels = 0;
+    QObject::connect(&dialog, &HistoryDialogFanLX::cancelRequestedFanLX, [&] { ++cancels; });
+    dialog.setBusy(true);
+    assert(dialog.isSearchInFlight());
+    assert(search->isEnabled());
+    assert(!earlier->isEnabled());
+    expectEqualFanLX(status->text(), QStringLiteral("查询中"), "busy title");
+    reset->click();
+    assert(cancels == 1);
+    assert(!dialog.isSearchInFlight());
+    assert(sender->text().isEmpty());
+    assert(keyword->text().isEmpty());
+    assert(!time->isChecked());
+    assert(page->value() == 50);
+    assert(dialog.fromText().isEmpty());
+    expectEqualFanLX(dialog.conversationKey(), group, "reset after busy");
+    expectEqualFanLX(status->text(), QStringLiteral("尚未查询"), "reset title");
+    assert(!summary->text().contains(QStringLiteral("查询已取消")));
+    const auto cancelsAfterIdleReset = cancels;
+    reset->click();
+    assert(cancels == cancelsAfterIdleReset);
+
+    dialog.setHasMore(true);
+    assert(earlier->isEnabled());
+    dialog.setBusy(true);
+    assert(!earlier->isEnabled());
+    dialog.setHasMore(true);
+    assert(!earlier->isEnabled());
+    dialog.setBusy(false);
+    assert(earlier->isEnabled());
+
+    HistoryResultRowFanLX older;
+    older.serverTime = QStringLiteral("2026-09-02T00:00:00Z");
+    older.sender = QString(80, QLatin1Char('9'));
+    older.conversationKey = direct;
+    older.body = QStringLiteral("<b>hello</b> & <img src=x>");
+    HistoryResultRowFanLX newer;
+    newer.serverTime = QString();
+    newer.sender = QStringLiteral("2026002");
+    newer.conversationKey = otherGroup;
+    newer.body = QString(4000, QLatin1Char('A'));
+    dialog.setResultRows({older, newer});
+    assert(stack->currentWidget() == table);
+    assert(table->rowCount() == 2);
+    expectEqualFanLX(table->item(0, 0)->text(), older.serverTime, "server order");
+    expectEqualFanLX(table->item(0, 1)->text(), older.sender, "long account");
+    expectEqualFanLX(table->item(0, 2)->text(), QStringLiteral("好友会话 · 2026001 ↔ 2026002"), "row label");
+    assert(!table->item(0, 2)->text().contains(QLatin1Char('|')));
+    expectEqualFanLX(table->item(0, 3)->text(), older.body, "literal html");
+    expectEqualFanLX(table->item(1, 0)->text(), QStringLiteral("原始时间未知"), "missing time");
+    expectEqualFanLX(table->item(1, 2)->text(), QStringLiteral("群聊 · 1005"), "group row");
+    assert(table->item(1, 3)->text().size() == 4000);
+    assert(table->rowHeight(1) <= 120);
+    assert(!(table->item(0, 3)->flags() & Qt::ItemIsEditable));
+    dialog.setBusy(true);
+    assert(stack->currentIndex() == 0);
+    expectEqualFanLX(status->text(), QStringLiteral("查询中"), "searching hides rows");
+    dialog.setBusy(false);
+    assert(table->rowCount() == 2);
+    assert(stack->currentWidget() == table);
+
+    dialog.setQueryFailed(QStringLiteral("无关错误"));
+    assert(table->rowCount() == 2);
+    assert(!summary->text().contains(QStringLiteral("无关错误")));
+    dialog.setBusy(true);
+    dialog.setQueryFailed(QStringLiteral("聊天库不可用"));
+    expectEqualFanLX(status->text(), QStringLiteral("查询失败"), "failure title");
+    expectEqualFanLX(detail->text(), QStringLiteral("聊天库不可用"), "failure detail");
+    assert(!status->text().contains(QStringLiteral("没有找到")));
+    assert(summary->text().contains(QStringLiteral("查询失败：聊天库不可用")));
+    assert(!dialog.isSearchInFlight());
+    assert(!earlier->isEnabled());
+
+    dialog.setResultRows({});
+    assert(table->rowCount() == 0);
+    assert(status->text().contains(QStringLiteral("没有找到匹配的聊天记录")));
+    assert(!status->text().contains(QStringLiteral("失败")));
+    dialog.setResultsText(QStringLiteral("（没有匹配的记录）"));
+    assert(status->text().contains(QStringLiteral("没有找到匹配的聊天记录")));
+    dialog.setResultsText(QStringLiteral("plain <b>not html</b>"));
+    expectEqualFanLX(table->item(0, 3)->text(), QStringLiteral("plain <b>not html</b>"), "legacy text");
+
+    QList<HistoryResultRowFanLX> many;
+    for (int index = 0; index < 200; ++index) {
+        HistoryResultRowFanLX row;
+        row.serverTime = QStringLiteral("2026-09-01T00:00:00Z");
+        row.sender = QStringLiteral("2026001");
+        row.conversationKey = group;
+        row.body = QStringLiteral("row-%1").arg(index);
+        many.append(row);
+    }
+    dialog.setResultRows(many);
+    assert(table->rowCount() == 200);
+    expectEqualFanLX(table->item(0, 3)->text(), QStringLiteral("row-0"), "first row");
+    expectEqualFanLX(table->item(199, 3)->text(), QStringLiteral("row-199"), "last row");
+    expectEqualFanLX(table->item(199, 2)->text(), QStringLiteral("群聊 · 1001"), "many label");
+
+    table->selectRow(0);
+    table->actions().constFirst()->trigger();
+    assert(QGuiApplication::clipboard()->text().contains(QStringLiteral("row-0")));
+    assert(!QGuiApplication::clipboard()->text().contains(QStringLiteral("row-1")));
+
+    dialog.setBusy(true);
+    dialog.setResultRows(many);
+    cancel->click();
+    assert(cancels == cancelsAfterIdleReset + 1);
+    expectEqualFanLX(status->text(), QStringLiteral("查询已取消"), "cancel title");
+    assert(summary->text().contains(QStringLiteral("查询已取消")));
+    assert(table->rowCount() == 0);
+    assert(!dialog.isSearchInFlight());
+    assert(search->isEnabled());
+
+    dialog.show();
+    QCoreApplication::processEvents();
+    assert(dialog.isVisible());
+    dialog.hide();
+    std::cout << "[ok] t72 history dialog" << std::endl;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -871,16 +1367,21 @@ int main(int argc, char **argv) {
     // 手工运行时在此兜底，保证信号槽与事件循环行为与真实界面一致。
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
-    QCoreApplication app(argc, argv);
+    QApplication app(argc, argv);
+    // 资源初始化必须在匿名命名空间外面，否则 qInitResources_app 会被声明成另一个函数。
+    Q_INIT_RESOURCE(app);
     t60ConversationModelFanLX();
+    t71ConversationIconsFanLX();
     t61MessageModelFanLX();
     t62ControllerRejectsIncompleteConfigFanLX();
     t63ControllerReportsStorageFailureFanLX();
     t64TwoClientsChatFanLX();
+    t70UnreadBadgeFanLX();
     t66LoginRejectionFanLX();
     t67PerServiceChannelsFanLX();
     t68WeiboChannelFanLX();
     t69ServerSideRegistrationFanLX();
+    t72HistoryDialogFanLX();
     std::cout << "gui_behavior: all cases passed" << std::endl;
     return 0;
 }

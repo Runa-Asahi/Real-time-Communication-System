@@ -219,6 +219,7 @@ if(FANLX_BUILD_GUI)
     src/gui/AccountPageFanLX.cpp
     src/gui/FriendPageFanLX.cpp
     src/gui/GroupPageFanLX.cpp
+    src/gui/GroupListDelegateFanLX.cpp
     src/gui/RegisterDialogFanLX.cpp
     src/gui/MainWindowFanLX.cpp)
   set(FANLX_GUI_HEADERS
@@ -233,7 +234,10 @@ if(FANLX_BUILD_GUI)
     include/gui/RegisterDialogFanLX.h
     include/gui/MainWindowFanLX.h)
   qt6_wrap_cpp(FANLX_GUI_MOC ${FANLX_GUI_HEADERS})
-  add_library(fanlx_gui_core ${FANLX_GUI_SOURCES} ${FANLX_GUI_MOC})
+  # 群页外观表，以及会话列表的好友/群图标（111.png、222.png）。
+  # 静态库里的 qrc 会被链接器丢掉，除非 MainWindow 里调用 Q_INIT_RESOURCE(app)。
+  qt6_add_resources(FANLX_APP_QSS ${CMAKE_CURRENT_SOURCE_DIR}/resources/app.qrc)
+  add_library(fanlx_gui_core ${FANLX_GUI_SOURCES} ${FANLX_GUI_MOC} ${FANLX_APP_QSS})
   target_include_directories(fanlx_gui_core PUBLIC include)
   target_link_libraries(fanlx_gui_core PUBLIC fanlx_network Qt6::Core Qt6::Gui Qt6::Widgets)
   if(MINGW)

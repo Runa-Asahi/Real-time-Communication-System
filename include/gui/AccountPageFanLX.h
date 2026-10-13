@@ -16,8 +16,8 @@ namespace fanlxGui {
 class DomainControllerFanLX;
 
 // AccountPageFanLX：账号与服务页面。
-// 首页只显示"当前身份 + 用户基本信息 + 四个入口"，开通管理 / 登录管理 / 绑定管理 / 资料与密码
-// 各自是一个子页面（点入口跳转，左上角「‹ 返回」回到首页）。
+// 首页是居中的仪表盘：页标题、当前身份栏、左侧个人资料卡、右侧四个管理入口。
+// 开通管理 / 登录管理 / 绑定管理 / 资料与密码仍是子页面（点入口跳转，左上角「‹ 返回」）。
 //
 // 界面只负责收集输入与展示结果；所有领域读写都委托 DomainControllerFanLX。
 class AccountPageFanLX : public QWidget {

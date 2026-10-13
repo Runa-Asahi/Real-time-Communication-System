@@ -45,8 +45,12 @@ void prepareConsoleFanLX() {
         consoleVisibleFanLX = true; // 与父进程共享：保持可见，--help 与参数错误仍看得见
         return;
     }
-    // 独自拥有控制台 → 是双击启动，隐藏它；此时标准输出只是看不见，致命错误改走消息框。
+    // 独自拥有控制台：双击，或由启动脚本 Start-Process -WindowStyle Normal 拉起。
+    // 只 ShowWindow(SW_HIDE) 会输给竞态——conhost 随后按 STARTUPINFO 再把窗口显示出来，
+    // 于是每登录一个账号就多一个空的黑色命令行，而且一直留着。
+    // FreeConsole 把本进程从控制台摘掉，窗口随最后一个附着进程离开而关闭，不能再被显示回来。
     ShowWindow(window, SW_HIDE);
+    FreeConsole();
     consoleVisibleFanLX = false;
 }
 

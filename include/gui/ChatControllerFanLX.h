@@ -106,7 +106,9 @@ class ChatControllerFanLX : public QObject {
     bool requestLatest();    // 返回最新
     bool requestConversations();
     bool requestDirectory();
-    void markRead(const QString &conversationKey, qint64 sequence);
+    // 提交已读游标。返回 false 表示没有提交（参数无效，或聊天库不可用）；
+    // 返回 true 只表示命令已入队，未读数要等数据库确认后的会话摘要才更新。
+    bool markRead(const QString &conversationKey, qint64 sequence);
     void reconnect();
     bool searchHistory(const QString &key, const QString &sender, const QString &keyword,
                        int limit, const QString &fromUtc = {}, const QString &toUtc = {});
@@ -150,6 +152,8 @@ class ChatControllerFanLX : public QObject {
   private:
     void applyHistoryFanLX(const chatDbFanLX::HistoryPageFanLX &page, bool prepend);
     void applyConversationsFanLX(const std::vector<chatDbFanLX::ConversationRowFanLX> &rows);
+    // 最新一页已经显示在当前会话时，提交该页最大序号。不在历史返回前调用。
+    void acknowledgeVisibleReadFanLX();
     // 给会话项补上"群 / 好友"的显示标志（文案 + 颜色）。
     // temporaryRemaining >= 0 表示这是与非好友的临时会话。
     static void applyKindFanLX(ConversationItemFanLX &item, bool group, int temporaryRemaining = -1);
@@ -179,6 +183,9 @@ class ChatControllerFanLX : public QObject {
     bool hasNewMessageFanLX = false;
     bool followingLatestFanLX = true;
     bool queryPrependFanLX = false;
+    // 已成功入队、尚未被失败作废的已读序号。只记住当前这一条，避免同一页重复提交。
+    QString readAckKeyFanLX;
+    qint64 readAckSequenceFanLX = 0;
     qint64 searchQueryIdFanLX = 0;
     chatDbFanLX::HistoryQueryFanLX searchQueryFanLX;
     chatDbFanLX::HistoryPageFanLX searchPageFanLX;

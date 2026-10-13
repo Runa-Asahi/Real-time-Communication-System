@@ -147,6 +147,9 @@ void DatabaseWorkerFanLX::processFanLX(const DbCommandFanLX &command, DbEventFan
         return;
     case DbCommandFanLX::KindFanLX::MarkRead:
         repository.markRead(command.conversationKey, command.conversationSequence);
+        // 同一条命令里带回更新后的会话摘要，避免“先查列表、后写游标”把旧未读数盖回去。
+        event.counter = command.conversationSequence;
+        event.conversations = repository.conversations();
         return;
     case DbCommandFanLX::KindFanLX::ForgetConversations:
         repository.forgetConversations(command.keepKeys);

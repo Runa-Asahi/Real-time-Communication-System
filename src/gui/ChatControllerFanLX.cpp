@@ -224,6 +224,8 @@ void ChatControllerFanLX::stop() {
     historyBeforeFanLX = 0;
     historySenderFanLX.clear();
     historyKeywordFanLX.clear();
+    readAckKeyFanLX.clear();
+    readAckSequenceFanLX = 0;
     lastErrorFanLX.clear();
     emit conversationsChangedFanLX();
     emit messagesChangedFanLX();
@@ -416,9 +418,33 @@ void ChatControllerFanLX::cancelSearch() {
     searchPageFanLX = {};
 }
 
-void ChatControllerFanLX::markRead(const QString &conversationKey, qint64 sequence) {
-    if (clientFanLX && !conversationKey.isEmpty() && sequence > 0)
-        clientFanLX->submitMarkRead(conversationKey.toStdString(), sequence);
+bool ChatControllerFanLX::markRead(const QString &conversationKey, qint64 sequence) {
+    if (conversationKey.isEmpty() || sequence <= 0)
+        return false;
+    if (!clientFanLX || !clientFanLX->submitMarkRead(conversationKey.toStdString(), sequence)) {
+        // 没有入队就不记成已提交，未读数保持数据库里的原值。
+        emit errorFanLX(QStringLiteral("已读状态未能提交：聊天库繁忙或不可用，未读数保持不变"));
+        return false;
+    }
+    return true;
+}
+
+void ChatControllerFanLX::acknowledgeVisibleReadFanLX() {
+    // 只确认“当前会话、最新一页”上的序号。翻看更早记录时 followingLatest 为假，
+    // 过期查询在进入 applyHistory 之前就已经按 queryId 丢掉，不会走到这里。
+    if (!followingLatestFanLX || queryPrependFanLX || currentKeyFanLX.isEmpty() || messagesFanLX.isEmpty())
+        return;
+    qint64 sequence = 0;
+    for (const auto &item : messagesFanLX)
+        sequence = std::max(sequence, item.sequence);
+    if (sequence <= 0)
+        return;
+    if (readAckKeyFanLX == currentKeyFanLX && sequence <= readAckSequenceFanLX)
+        return;
+    if (!markRead(currentKeyFanLX, sequence))
+        return;
+    readAckKeyFanLX = currentKeyFanLX;
+    readAckSequenceFanLX = sequence;
 }
 
 bool ChatControllerFanLX::currentConversationIsGroup() const {
@@ -512,8 +538,12 @@ void ChatControllerFanLX::applyKindFanLX(ConversationItemFanLX &item, bool group
 
 void ChatControllerFanLX::applyHistoryFanLX(const chatDbFanLX::HistoryPageFanLX &page, bool prepend) {
     QList<MessageItemFanLX> converted;
+    bool sameConversation = true;
+    const auto currentKey = currentKeyFanLX.toStdString();
     for (auto it = page.messages.rbegin(); it != page.messages.rend(); ++it) {
         const auto &row = *it;
+        if (!row.conversationKey.empty() && row.conversationKey != currentKey)
+            sameConversation = false;
         MessageItemFanLX item;
         item.sender = QString::fromStdString(row.sender);
         item.body = QString::fromStdString(row.body);
@@ -536,6 +566,9 @@ void ChatControllerFanLX::applyHistoryFanLX(const chatDbFanLX::HistoryPageFanLX 
     if (!page.messages.empty())
         historyBeforeFanLX = page.nextBeforeSequence;
     emit messagesChangedFanLX();
+    // 历史已经落到当前会话之后才确认已读。prepend 是更早一页，不能把还没看见的新消息清掉。
+    if (!prepend && sameConversation)
+        acknowledgeVisibleReadFanLX();
 }
 
 void ChatControllerFanLX::drainEventsFanLX() {
@@ -620,8 +653,15 @@ void ChatControllerFanLX::drainEventsFanLX() {
                 emit noticeFanLX(QString::fromStdString(event->detail));
             break;
         case KindFanLX::Error:
-            if (!event->detail.empty())
-                emit errorFanLX(QString::fromStdString(event->detail));
+            if (!event->detail.empty()) {
+                const auto detail = QString::fromStdString(event->detail);
+                // 写入失败后允许下一次最新页再次提交，同时不能把界面上的未读数改成 0。
+                if (detail.startsWith(QStringLiteral("已读状态未能写入"))) {
+                    readAckKeyFanLX.clear();
+                    readAckSequenceFanLX = 0;
+                }
+                emit errorFanLX(detail);
+            }
             break;
         }
     }

@@ -309,7 +309,8 @@ bool SqliteChatRepositoryFanLX::appendDelivered(const MessageRowFanLX &row) {
                           existing.columnText(2) == row.sender &&
                           existing.columnText(3) == row.recipient && existing.columnText(4) == row.body;
         if (!same)
-            throw ChatConflictFanLX("messageId " + std::to_string(*row.messageId) + " 内容冲突");
+            throw ChatConflictFanLX("messageId " + std::to_string(*row.messageId) +
+                                    " 内容冲突：本地这条编号的内容与服务端投递不一致");
         return false; // 内容一致的重复投递不新增行
     }
     existing.reset();

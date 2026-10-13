@@ -10,6 +10,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
@@ -36,6 +37,10 @@ QPushButton *linkButtonFanLX(const QString &text, QWidget *parent) {
 
 LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     setWindowTitle(QStringLiteral("登录"));
+    // 登录窗宽度固定，高度只跟着内容走。可拉伸粗边框在 150% 缩放下会让 Windows
+    // 把客户区撑高约一行，从而触发 setGeometry 警告。细对话框边框没有这块隐形边距。
+    setWindowFlag(Qt::MSWindowsFixedSizeDialogHint, true);
+    setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     setFixedWidth(400);
     setStyleSheet(kit::pageStyle(kLoginAccentFanLX) +
                   QStringLiteral("QDialog{background:#f7f9fb;}"
@@ -53,6 +58,7 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     auto *subtitle = new QLabel(QStringLiteral("使用微X号登录，QQ / 微信 / 微博 登录后自动联动"), this);
     subtitle->setProperty("role", QStringLiteral("caption"));
     subtitle->setAlignment(Qt::AlignCenter);
+    subtitle->setWordWrap(true);
 
     // ---- 账号与密码 ----
     accountEditFanLX = new QLineEdit(this);
@@ -144,13 +150,31 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     connect(settingsToggleFanLX, &QPushButton::clicked, this,
             [this] { setSettingsVisibleFanLX(!settingsFrameFanLX->isVisible()); });
     updateDerivedPathFanLX();
+    fitHeightToContentsFanLX();
     accountEditFanLX->setFocus();
+}
+
+void LoginDialogFanLX::fitHeightToContentsFanLX() {
+    QLayout *box = layout();
+    if (!box)
+        return;
+    ensurePolished();
+    box->activate();
+    // 换行标签的 sizeHint 按「尽量不换行」的宽度算，比固定 400 像素时实际需要的矮。
+    // 必须用 minimumHeightForWidth，否则窗口先按矮的高度显示，再被系统拉高。
+    int height = 0;
+    if (box->hasHeightForWidth())
+        height = box->minimumHeightForWidth(400);
+    if (height <= 0)
+        height = box->sizeHint().height();
+    if (height > 0 && (minimumHeight() != height || maximumHeight() != height))
+        setFixedHeight(height);
 }
 
 void LoginDialogFanLX::setSettingsVisibleFanLX(bool visible) {
     settingsFrameFanLX->setVisible(visible);
     settingsToggleFanLX->setText(visible ? QStringLiteral("服务器设置 ▴") : QStringLiteral("服务器设置 ▾"));
-    adjustSize();
+    fitHeightToContentsFanLX();
 }
 
 // 提交：先把按钮置为"正在登录"并让界面刷新一次，再进入（会阻塞数秒的）连接与认证，
@@ -165,6 +189,7 @@ void LoginDialogFanLX::submitFanLX() {
     statusLabelFanLX->setVisible(false);
     loginButtonFanLX->setEnabled(false);
     loginButtonFanLX->setText(QStringLiteral("正在登录…"));
+    fitHeightToContentsFanLX();
     QCoreApplication::processEvents();
     emit submittedFanLX();
 }
@@ -173,6 +198,7 @@ void LoginDialogFanLX::showStatusFanLX(const QString &text, bool good) {
     statusLabelFanLX->setStyleSheet(good ? QStringLiteral("color:#1a7f37;") : QStringLiteral("color:#b3261e;"));
     statusLabelFanLX->setText(text);
     statusLabelFanLX->setVisible(true);
+    fitHeightToContentsFanLX();
 }
 
 // 注册入口：注册产出的是登录身份本身，因此它属于登录界面而不是登录之后的"账号与服务"。
@@ -220,6 +246,8 @@ void LoginDialogFanLX::updateDerivedPathFanLX() {
     } catch (const std::exception &) {
         derivedPathLabelFanLX->setText(QStringLiteral("登录后数据目录：参数不完整"));
     }
+    if (settingsFrameFanLX->isVisible())
+        fitHeightToContentsFanLX();
 }
 
 void LoginDialogFanLX::prefill(const QString &host, const QString &port, const QString &account,

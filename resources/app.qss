@@ -1,0 +1,271 @@
+/* 群页外观。MainWindowFanLX 构造时经 QApplication::setStyleSheet 加载。
+   选择器都挂在 QWidget#groupPageFanLX 下，避免改到聊天、好友、账号页和对话框。
+   层次只靠底色和边框，不用 box-shadow，也不用 QGraphicsEffect。 */
+
+QWidget#groupPageFanLX {
+    background: #f5f6f8;
+    color: #1f2328;
+    font-size: 13px;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+QScrollArea#groupScrollFanLX,
+QWidget#groupViewportFanLX {
+    background: #f5f6f8;
+    border: none;
+}
+
+QWidget#groupPageFanLX QFrame#card {
+    background: #ffffff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+}
+
+QWidget#groupPageFanLX QLabel[role="pageTitle"],
+QWidget#groupPageFanLX QLabel[role="title"] {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2328;
+    background: transparent;
+}
+
+QWidget#groupPageFanLX QLabel[role="sectionTitle"] {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f2328;
+    background: transparent;
+}
+
+QWidget#groupPageFanLX QLabel[role="hint"] {
+    color: #909399;
+    font-size: 12px;
+    background: transparent;
+}
+
+QWidget#groupPageFanLX QLabel[fanlxKind="scope"] {
+    color: #909399;
+    font-size: 13px;
+    font-weight: 400;
+    background: transparent;
+}
+
+QWidget#groupPageFanLX QLabel[role="empty"] {
+    color: #909399;
+    font-size: 13px;
+    background: transparent;
+}
+
+QWidget#groupPageFanLX QListWidget#groupPendingListFanLX,
+QWidget#groupPageFanLX QListWidget#groupDiscussionListFanLX {
+    background: transparent;
+    border: none;
+}
+
+/* 分组框标题改由卡片里的 QLabel 显示，这里把原生标题收掉，避免两套标题叠在一起。
+   title() 字符串保留，页面文本扫描仍能读到。 */
+QWidget#groupPageFanLX QGroupBox {
+    background: transparent;
+    border: none;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+}
+
+QWidget#groupPageFanLX QGroupBox::title {
+    color: transparent;
+    padding: 0;
+    height: 0;
+    font-size: 0px;
+}
+
+QWidget#groupPageFanLX QLineEdit {
+    background: #ffffff;
+    color: #1f2328;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    min-height: 20px;
+    selection-background-color: #e3eeff;
+    selection-color: #1f2328;
+}
+
+QWidget#groupPageFanLX QLineEdit[fanlxKind="mono"] {
+    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    color: #606266;
+}
+
+QWidget#groupPageFanLX QLineEdit:focus {
+    border: 1px solid #2f81f7;
+}
+
+QWidget#groupPageFanLX QLineEdit:disabled {
+    background: #f5f6f8;
+    color: #a8abb2;
+}
+
+QWidget#groupPageFanLX QListView,
+QWidget#groupPageFanLX QListWidget {
+    background: #ffffff;
+    color: #606266;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    outline: none;
+    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-size: 13px;
+}
+
+QWidget#groupPageFanLX QListView::item,
+QWidget#groupPageFanLX QListWidget::item {
+    padding: 12px 12px;
+    border-left: 3px solid transparent;
+    color: #606266;
+}
+
+QWidget#groupPageFanLX QListView::item:hover,
+QWidget#groupPageFanLX QListWidget::item:hover {
+    background: #f0f7ff;
+}
+
+QWidget#groupPageFanLX QListView::item:selected,
+QWidget#groupPageFanLX QListWidget::item:selected,
+QWidget#groupPageFanLX QListView::item:selected:hover,
+QWidget#groupPageFanLX QListWidget::item:selected:hover {
+    background: #e3eeff;
+    border-left: 3px solid #2f81f7;
+    color: #1f2328;
+}
+
+QWidget#groupPageFanLX QPlainTextEdit {
+    background: #fafbfc;
+    color: #303133;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-size: 13px;
+    selection-background-color: #e3eeff;
+    selection-color: #1f2328;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="primary"] {
+    background: #2f81f7;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    min-width: 120px;
+    min-height: 32px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:hover {
+    background: #2569d8;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:pressed {
+    background: #1c53b0;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:disabled {
+    background: #c5ccd3;
+    color: #ffffff;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="danger"] {
+    background: #ffffff;
+    color: #e5484d;
+    border: 1px solid #e5484d;
+    border-radius: 6px;
+    padding: 6px 16px;
+    min-width: 120px;
+    min-height: 32px;
+    font-size: 13px;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="danger"]:hover {
+    background: #fdf0f0;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="danger"]:pressed {
+    background: #fde8e8;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="danger"]:disabled {
+    color: #f0a8ab;
+    border-color: #f5c2c4;
+    background: #ffffff;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="nav"] {
+    background: #ffffff;
+    color: #1f2328;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    padding: 6px 16px;
+    min-width: 120px;
+    min-height: 32px;
+    font-size: 13px;
+    text-align: center;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:hover {
+    border-color: #2f81f7;
+    color: #2f81f7;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:pressed {
+    background: #f0f7ff;
+    border-color: #2f81f7;
+    color: #2f81f7;
+}
+
+QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:disabled {
+    color: #a8abb2;
+    background: #f5f6f8;
+    border-color: #e4e7ed;
+}
+
+QWidget#groupPageFanLX QPushButton[role="back"] {
+    color: #2f81f7;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    min-width: 0;
+    min-height: 0;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+}
+
+QWidget#groupPageFanLX QPushButton[role="back"]:hover {
+    background: #f0f7ff;
+}
+
+QWidget#groupPageFanLX QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+
+QWidget#groupPageFanLX QScrollBar::handle:vertical {
+    background: #d0d5dd;
+    border-radius: 3px;
+    min-height: 36px;
+}
+
+QWidget#groupPageFanLX QScrollBar::handle:vertical:hover {
+    background: #b8c0cc;
+}
+
+QWidget#groupPageFanLX QScrollBar::add-line:vertical,
+QWidget#groupPageFanLX QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QWidget#groupPageFanLX QScrollBar::add-page:vertical,
+QWidget#groupPageFanLX QScrollBar::sub-page:vertical {
+    background: transparent;
+}

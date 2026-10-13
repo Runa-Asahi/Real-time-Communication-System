@@ -5,29 +5,147 @@
 #include "gui/GroupPageFanLX.h"
 #include "gui/HistoryDialogFanLX.h"
 #include "network/MessageCodecFanLX.h"
+#include <QApplication>
 #include <QCloseEvent>
+#include <QColor>
+#include <QFile>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
+#include <QDebug>
+#include <QImage>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPixmap>
 #include <QStyledItemDelegate>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMenuBar>
 #include <QListView>
 #include <QMessageBox>
+#include <QPalette>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStyle>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTextBrowser>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QDateTime>
 #include <QScrollBar>
 #include <QTextCursor>
 #include <algorithm>
+#include <vector>
+
+// 必须写在命名空间外面：Q_INIT_RESOURCE 不能出现在 namespace 里。
+// 群页外观在主窗口创建时加载。选择器限定在 #groupPageFanLX，不改其它页签。
+static void loadApplicationStyleFanLX() {
+    Q_INIT_RESOURCE(app);
+    QFile file(QStringLiteral(":/app.qss"));
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const QString style = QString::fromUtf8(file.readAll());
+    auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
+    if (app && app->styleSheet() != style)
+        app->setStyleSheet(style);
+}
+
+static void ensureAppResourceFanLX() {
+    Q_INIT_RESOURCE(app);
+}
+
+// 这两张 PNG 的 alpha 全是 255：好友图把浅灰/白格子烘进了像素，群图是白底。
+// 从边缘泛洪去掉低饱和的浅色，列表的悬停和选中才能透出来。已经带透明通道的图保持原样。
+static QImage knockOutOpaqueMatteFanLX(QImage image) {
+    image = image.convertToFormat(QImage::Format_ARGB32);
+    const int width = image.width();
+    const int height = image.height();
+    if (width <= 0 || height <= 0)
+        return image;
+    for (int y = 0; y < height; ++y) {
+        const auto *row = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < width; ++x) {
+            if (qAlpha(row[x]) < 250)
+                return image;
+        }
+    }
+    const auto matte = [](QRgb color) {
+        const int red = qRed(color);
+        const int green = qGreen(color);
+        const int blue = qBlue(color);
+        const int upper = std::max(red, std::max(green, blue));
+        const int lower = std::min(red, std::min(green, blue));
+        return lower >= 228 && (upper - lower) <= 18;
+    };
+    std::vector<char> seen(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0);
+    std::vector<int> stack;
+    const auto consider = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= width || y >= height)
+            return;
+        const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                           static_cast<std::size_t>(x);
+        if (seen[index])
+            return;
+        seen[index] = 1;
+        if (!matte(reinterpret_cast<const QRgb *>(image.constScanLine(y))[x]))
+            return;
+        stack.push_back(static_cast<int>(index));
+    };
+    for (int x = 0; x < width; ++x) {
+        consider(x, 0);
+        consider(x, height - 1);
+    }
+    for (int y = 0; y < height; ++y) {
+        consider(0, y);
+        consider(width - 1, y);
+    }
+    while (!stack.empty()) {
+        const int index = stack.back();
+        stack.pop_back();
+        const int x = index % width;
+        const int y = index / width;
+        reinterpret_cast<QRgb *>(image.scanLine(y))[x] = qRgba(0, 0, 0, 0);
+        consider(x + 1, y);
+        consider(x - 1, y);
+        consider(x, y + 1);
+        consider(x, y - 1);
+    }
+    return image;
+}
+
+static QPixmap loadConversationIconFanLX(const QString &resourcePath) {
+    ensureAppResourceFanLX();
+    QImage image(resourcePath);
+    if (image.isNull()) {
+        qWarning().noquote() << QStringLiteral("会话类型图标加载失败：") << resourcePath;
+        return {};
+    }
+    image = knockOutOpaqueMatteFanLX(std::move(image));
+    return QPixmap::fromImage(image);
+}
+
+// 好友用 :/conversation/111.png，群用 :/conversation/222.png。临时会话没有图标。
+static const QPixmap &conversationKindPixmapFanLX(const QString &kind) {
+    struct IconsFanLX {
+        QPixmap friendIcon;
+        QPixmap groupIcon;
+        IconsFanLX() {
+            friendIcon = loadConversationIconFanLX(QStringLiteral(":/conversation/111.png"));
+            groupIcon = loadConversationIconFanLX(QStringLiteral(":/conversation/222.png"));
+        }
+    };
+    static const IconsFanLX icons;
+    if (kind == QStringLiteral("好友"))
+        return icons.friendIcon;
+    if (kind == QStringLiteral("群"))
+        return icons.groupIcon;
+    static const QPixmap none;
+    return none;
+}
 
 namespace fanlxGui {
 
@@ -73,9 +191,10 @@ QString chatPageStyleFanLX() {
                // 聊天标题区
                "QFrame#chatHeaderFanLX{background:transparent;border:none;border-bottom:1px solid %3;"
                "border-top-left-radius:12px;border-top-right-radius:12px;}"
-               "QLabel#chatTitleFanLX{font-size:17px;font-weight:600;color:%4;}"
-               "QLabel#chatMetaFanLX{font-size:12px;color:%5;}"
+               "QLabel#chatTitleFanLX{font-size:18px;font-weight:600;color:%4;}"
+               "QLabel#chatMetaFanLX{font-size:12px;color:%6;}"
                "QLabel#chatServiceFanLX{font-size:12px;color:%6;}"
+               "QLabel#chatServiceFanLX[alertFanLX=\"true\"]{color:#7a4b00;}"
                // 消息区
                "QTextBrowser#chatMessages{background:%7;border:none;}"
                // 工具条：次要按钮 + 新消息提示
@@ -117,9 +236,68 @@ QString chatPageStyleFanLX() {
              accentPressed, accentSoft);
 }
 
-// 会话列表行：两行布局（"[群] 1001" 标题 + 最后一条消息摘要）与未读角标。
-// 标题文字与颜色完全来自模型（DisplayRole 的类型前缀 + ForegroundRole 的类型颜色），
-// 因此 [好友] 蓝 / [群] 紫 / [临时] 橙 的含义与原来一致，只是排版更舒展。
+// 主窗口外框（菜单栏 + 页签）与聊天页同一套颜色。
+// 样式只挂在菜单栏、三个下拉菜单和页签条上，选择器都带 objectName，
+// 因此不会进到登录窗、注册窗、历史查询窗，也不会改写各页签内部控件。
+const QString chromeHoverFanLX = QStringLiteral("#e7ebf2");
+
+QString menuBarStyleFanLX() {
+    using namespace chatThemeFanLX;
+    return QStringLiteral(
+               "QMenuBar#mainMenuBarFanLX{background:%1;border:none;padding:0 8px;font-size:12px;}"
+               "QMenuBar#mainMenuBarFanLX::item{background:transparent;color:%2;padding:3px 10px;"
+               "margin:2px 1px;border:none;border-radius:4px;}"
+               "QMenuBar#mainMenuBarFanLX::item:selected{background:%3;color:%4;}"
+               "QMenuBar#mainMenuBarFanLX::item:pressed{background:%5;color:%6;}"
+               "QMenuBar#mainMenuBarFanLX::item:disabled{background:transparent;color:%7;}")
+        .arg(pageBg, textSecondary, chromeHoverFanLX, textPrimary, accentSoft, accent, textMuted);
+}
+
+QString menuPopupStyleFanLX() {
+    using namespace chatThemeFanLX;
+    return QStringLiteral(
+               "QMenu#mainMenuFanLX{background:%1;border:1px solid %2;border-radius:8px;padding:4px;}"
+               "QMenu#mainMenuFanLX::item{background:transparent;color:%3;padding:6px 18px 6px 12px;"
+               "margin:1px 2px;border:none;border-radius:4px;font-size:12px;}"
+               "QMenu#mainMenuFanLX::item:selected{background:%4;color:%3;}"
+               "QMenu#mainMenuFanLX::item:disabled{background:transparent;color:%5;}"
+               "QMenu#mainMenuFanLX::separator{height:1px;background:%2;margin:4px 8px;}")
+        .arg(panelBg, border, textPrimary, accentSoft, textMuted);
+}
+
+QString tabBarStyleFanLX() {
+    using namespace chatThemeFanLX;
+    // 页签保持扁平：选中靠蓝色文字、浅蓝底和底边，而不是凸起边框。
+    // 不画整条底部分隔线，避免和选中页签的蓝色下划线叠成双线。
+    // :first 的左边距用来和菜单文字左缘对齐。
+    // 占位符必须从 %1 连续编号：QString::arg 按出现的最小编号依次替换。
+    return QStringLiteral(
+               "QTabBar#mainTabBarFanLX{background:%1;border:none;qproperty-drawBase:0;}"
+               "QTabBar#mainTabBarFanLX::tab{background:transparent;color:%2;border:none;"
+               "border-bottom:2px solid transparent;padding:8px 16px 6px 16px;margin:4px 4px 0 4px;"
+               "font-size:14px;}"
+               "QTabBar#mainTabBarFanLX::tab:first{margin-left:2px;}"
+               "QTabBar#mainTabBarFanLX::tab:hover{background:%3;color:%4;}"
+               "QTabBar#mainTabBarFanLX::tab:selected{background:%5;color:%6;border-bottom:2px solid %6;}"
+               "QTabBar#mainTabBarFanLX::tab:selected:hover{background:%5;color:%6;}"
+               "QTabBar#mainTabBarFanLX::tab:focus{background:%3;color:%4;}"
+               "QTabBar#mainTabBarFanLX::tab:selected:focus{background:%5;color:%6;"
+               "border-bottom:2px solid %6;}")
+        .arg(pageBg, textSecondary, chromeHoverFanLX, textPrimary, accentSoft, accent);
+}
+
+QString tabWidgetStyleFanLX() {
+    using namespace chatThemeFanLX;
+    // 只去掉页签外框。选择器限定在这个 QTabWidget 上，不改页内按钮和输入框。
+    return QStringLiteral(
+               "QTabWidget#mainTabsFanLX{background:%1;border:none;}"
+               "QTabWidget#mainTabsFanLX::pane{background:%1;border:none;top:0px;}")
+        .arg(pageBg);
+}
+
+// 会话列表行：第一行是类型图标和名称，第二行是最后一条消息。未读角标仍在右上。
+// 模型里的 "[好友] / [群]" 前缀留给工具提示和其它读者，这里不再画出来。
+// 临时会话没有对应图片，继续用原来的文字前缀。
 class ConversationDelegateFanLX : public QStyledItemDelegate {
   public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -128,7 +306,8 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
         (void)index;
         const auto title = QFontMetrics(titleFont(option.font));
         const auto sub = QFontMetrics(subtitleFont(option.font));
-        return {option.rect.width(), kPadY * 2 + title.height() + kLineGap + sub.height() + kRowGap};
+        const int titleRow = std::max(title.height(), kIcon);
+        return {option.rect.width(), kPadY * 2 + titleRow + kLineGap + sub.height() + kRowGap};
     }
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
@@ -158,8 +337,9 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
         const QFontMetrics titleM(titleF);
         const QFontMetrics subM(subF);
         const auto content = card.toRect().adjusted(kPadX, kPadY - kRowGap / 2, -kPadX, 0);
+        const int titleRowH = std::max(titleM.height(), kIcon);
 
-        // 未读角标（右上），数量为 0 时不画
+        // 未读角标（右上），数量为 0 时不画。位置仍对着第一行，不跟图标抢地方。
         const auto unread = index.data(ConversationListModelFanLX::UnreadRoleFanLX).toLongLong();
         int badgeWidth = 0;
         if (unread > 0) {
@@ -170,7 +350,7 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
             const auto text = unread > 99 ? QStringLiteral("99+") : QString::number(unread);
             const int h = 18;
             badgeWidth = std::max(h, badgeM.horizontalAdvance(text) + 12);
-            const QRect badge(content.right() - badgeWidth, content.top() + (titleM.height() - h) / 2, badgeWidth, h);
+            const QRect badge(content.right() - badgeWidth, content.top() + (titleRowH - h) / 2, badgeWidth, h);
             QPainterPath pill;
             pill.addRoundedRect(badge, h / 2.0, h / 2.0);
             painter->fillPath(pill, QColor(QStringLiteral("#e5484d")));
@@ -180,11 +360,47 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
             badgeWidth += 8;
         }
 
-        // 标题：模型给出的"[类型] 名称"，用模型给出的类型颜色
-        const auto titleText = index.data(Qt::DisplayRole).toString();
+        const auto kind = index.data(ConversationListModelFanLX::KindTextRoleFanLX).toString();
+        const bool useIcon = kind == QStringLiteral("好友") || kind == QStringLiteral("群");
+        auto titleText = index.data(Qt::DisplayRole).toString();
+        const auto prefix = QStringLiteral("[") + kind + QStringLiteral("] ");
+        if (useIcon && titleText.startsWith(prefix))
+            titleText = titleText.mid(prefix.size());
+
+        int textLeft = content.left();
+        if (useIcon) {
+            const QRect slot(content.left(), content.top() + (titleRowH - kIcon) / 2, kIcon, kIcon);
+            const QPixmap &icon = conversationKindPixmapFanLX(kind);
+            if (icon.isNull()) {
+                // 资源没读到时留一个带类型字的色块，避免这一格变成空白。
+                QColor mark(textMuted);
+                const auto brush = index.data(Qt::ForegroundRole).value<QBrush>();
+                if (brush.style() != Qt::NoBrush)
+                    mark = brush.color();
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(mark);
+                painter->drawRoundedRect(slot, 4, 4);
+                painter->setPen(Qt::white);
+                QFont markFont = subF;
+                markFont.setPixelSize(11);
+                markFont.setWeight(QFont::DemiBold);
+                painter->setFont(markFont);
+                painter->drawText(slot, Qt::AlignCenter, kind.left(1));
+            } else {
+                const QSize fitted = icon.size().scaled(kIcon, kIcon, Qt::KeepAspectRatio);
+                const QRect dest(slot.x() + (kIcon - fitted.width()) / 2,
+                                 slot.y() + (kIcon - fitted.height()) / 2, fitted.width(), fitted.height());
+                painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+                painter->drawPixmap(dest, icon);
+            }
+            textLeft = slot.right() + 1 + kIconGap;
+        }
+
         const auto brush = index.data(Qt::ForegroundRole).value<QBrush>();
-        const QColor titleColor = brush.style() == Qt::NoBrush ? QColor(textPrimary) : brush.color();
-        const QRect titleRect(content.left(), content.top(), content.width() - badgeWidth, titleM.height());
+        const QColor titleColor =
+            useIcon || brush.style() == Qt::NoBrush ? QColor(textPrimary) : brush.color();
+        const int titleWidth = std::max(0, content.width() - badgeWidth - (textLeft - content.left()));
+        const QRect titleRect(textLeft, content.top(), titleWidth, titleRowH);
         painter->setFont(titleF);
         painter->setPen(titleColor);
         painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
@@ -194,7 +410,7 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
         auto subtitle = index.data(ConversationListModelFanLX::SubtitleRoleFanLX).toString();
         subtitle.replace(QLatin1Char('\n'), QLatin1Char(' '));
         const bool emptySubtitle = subtitle.trimmed().isEmpty();
-        const QRect subRect(content.left(), titleRect.bottom() + 1 + kLineGap, content.width(), subM.height());
+        const QRect subRect(content.left(), content.top() + titleRowH + kLineGap, content.width(), subM.height());
         painter->setFont(subF);
         painter->setPen(QColor(emptySubtitle ? QStringLiteral("#b4bcc7") : textMuted));
         painter->drawText(subRect, Qt::AlignLeft | Qt::AlignVCenter,
@@ -209,6 +425,8 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
     static constexpr int kPadY = 12;    // 行内上下留白
     static constexpr int kLineGap = 4;  // 标题与摘要的间距
     static constexpr int kRowGap = 4;   // 行与行之间的间距
+    static constexpr int kIcon = 22;    // 好友 / 群图标边长，不拉伸
+    static constexpr int kIconGap = 8;  // 图标和名称的间距
 
     static QFont titleFont(QFont base) {
         base.setPixelSize(14);
@@ -238,29 +456,114 @@ void syncConversationSelectionFanLX(QListView *view, const ConversationListModel
     view->selectionModel()->clearSelection();
 }
 
+// 副标题只保留聊天服务和当前账号。两边都空时返回空串，调用方据此收起这一行。
+QString chatSubtitleFanLX(const QString &service, const QString &account) {
+    if (service.isEmpty())
+        return account.isEmpty() ? QString() : QStringLiteral("账号 %1").arg(account);
+    if (account.isEmpty())
+        return service;
+    return QStringLiteral("%1 · 账号 %2").arg(service, account);
+}
+
+// 聊天标题用会话名称，不再叠 [好友] / [群] 色标（左侧列表已经标出类型）。
+// 群号本身读起来不像名字，因此写成「群聊 1001」；好友与临时会话直接用对端名称。
+QString chatConversationTitleFanLX(const QString &key, const QString &account, bool group,
+                                   const QString &itemTitle) {
+    QString name = itemTitle.trimmed();
+    if (name.isEmpty()) {
+        const auto parts = key.split(QLatin1Char('|'));
+        if (group) {
+            name = parts.size() > 1 ? parts.at(1) : key;
+        } else if (parts.size() >= 3 && parts.at(0) == QStringLiteral("d")) {
+            name = parts.at(1) == account ? parts.at(2) : parts.at(1);
+        } else {
+            name = key;
+        }
+    }
+    if (name.isEmpty())
+        name = key;
+    return group ? QStringLiteral("群聊 %1").arg(name) : name;
+}
+
+// 服务行的两种形态：正常连接是一行弱化副标题；需要用户处理时换成完整提示。
+// alertFanLX 只影响颜色，文案本身由调用方传入，避免把提示写短。
+void setChatServiceStatusFanLX(QLabel *label, const QString &text, bool alert) {
+    if (!label)
+        return;
+    const QVariant previous = label->property("alertFanLX");
+    const bool modeChanged = !previous.isValid() || previous.toBool() != alert;
+    label->setProperty("alertFanLX", alert);
+    label->setText(text);
+    label->setVisible(!text.isEmpty());
+    if (modeChanged) {
+        if (auto *style = label->style()) {
+            style->unpolish(label);
+            style->polish(label);
+        }
+        label->update();
+    }
+}
+
+// 只识别「点开会话」这句普通提示。错误、连接状态和领域操作结果都不走这个格式。
+bool chatConversationStatusFanLX(const QString &text) {
+    return text.startsWith(QStringLiteral("已打开")) && text.contains(QStringLiteral("会话："));
+}
+
+void clearChatConversationStatusFanLX(QLabel *status) {
+    if (!status || !chatConversationStatusFanLX(status->text()))
+        return;
+    status->setText(QString());
+    status->setStyleSheet(QStringLiteral("color:#1f2328; padding:2px;"));
+}
+
 } // namespace
 
 MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControllerFanLX *domain,
                                 const QString &account, const QString &storageBackend, QWidget *parent)
     : QMainWindow(parent), controllerFanLX(controller), domainFanLX(domain), accountFanLX(account),
       storageBackendFanLX(storageBackend) {
+    loadApplicationStyleFanLX();
     setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — QQ 客户端"));
     resize(1180, 760);
+    // 窗口底色与聊天页一致，避免菜单栏和页签之间露出另一块系统灰。
+    auto chromePalette = palette();
+    chromePalette.setColor(QPalette::Window, QColor(chatThemeFanLX::pageBg));
+    setPalette(chromePalette);
 
     conversationsFanLX = new ConversationListModelFanLX(this);
     messagesFanLX = new MessageListModelFanLX(this);
 
     tabsFanLX = new QTabWidget(this);
+    tabsFanLX->setObjectName(QStringLiteral("mainTabsFanLX"));
+    tabsFanLX->setDocumentMode(true); // 去掉页签外围的原生立体框，不改变页签个数与切换
+    tabsFanLX->tabBar()->setObjectName(QStringLiteral("mainTabBarFanLX"));
+    tabsFanLX->tabBar()->setDrawBase(false);
+    tabsFanLX->tabBar()->setExpanding(false); // 按文字宽度排开，不要拉成一排大按钮
+    tabsFanLX->tabBar()->setElideMode(Qt::ElideNone);
+    tabsFanLX->tabBar()->setUsesScrollButtons(true); // 窗口过窄时滚动，不截断「账号与服务」
+    tabsFanLX->tabBar()->setStyleSheet(tabBarStyleFanLX());
+    tabsFanLX->setStyleSheet(tabWidgetStyleFanLX());
     buildChatPageFanLX();
     buildDomainPagesFanLX();
 
     statusFanLX = new QLabel(this);
     statusFanLX->setWordWrap(true);
+    statusFanLX->setContentsMargins(12, 4, 12, 6);
     statusFanLX->setStyleSheet(QStringLiteral("color:#1f2328; padding:2px;"));
+    // 离开聊天页后，不再把「已打开某某会话」留在账号、好友或群页面底部。
+    connect(tabsFanLX, &QTabWidget::currentChanged, this, [this](int index) {
+        if (index != 0)
+            clearChatConversationStatusFanLX(statusFanLX);
+    });
 
     auto *central = new QWidget(this);
+    central->setAutoFillBackground(true);
+    auto centralPalette = central->palette();
+    centralPalette.setColor(QPalette::Window, QColor(chatThemeFanLX::pageBg));
+    central->setPalette(centralPalette);
     auto *layout = new QVBoxLayout(central);
-    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
     layout->addWidget(tabsFanLX, 1);
     layout->addWidget(statusFanLX);
     setCentralWidget(central);
@@ -315,7 +618,8 @@ void MainWindowFanLX::showNoticeFanLX(const QString &text) {
     statusFanLX->setText(text);
     statusFanLX->setStyleSheet(QStringLiteral("color:#7a4b00; background:#fff4e5; "
                                               "border:1px solid #ffd8a8; padding:4px;"));
-    serviceLabelFanLX->setText(QStringLiteral("未连接：%1").arg(text));
+    // 需要用户去开通或登录时，服务行改成完整提示，不用平常那行副标题盖掉。
+    setChatServiceStatusFanLX(serviceLabelFanLX, QStringLiteral("未连接：%1").arg(text), true);
 }
 
 // 页签 1：聊天。左会话面板 + 右聊天面板（标题区 / 消息区 / 工具条 / 输入区）。
@@ -360,29 +664,30 @@ void MainWindowFanLX::buildChatPageFanLX() {
     panel->setObjectName(QStringLiteral("chatPanelFanLX"));
     panel->setMinimumWidth(420);
 
-    // 标题区：当前会话（主）+ 账号与服务信息（次）
+    // 标题区：会话名称（主）+ 一行服务/账号副标题（次）。类型色标只留在左侧列表。
     auto *header = new QFrame(panel);
     header->setObjectName(QStringLiteral("chatHeaderFanLX"));
     auto *chatTitle = new QLabel(header);
     chatTitle->setObjectName(QStringLiteral("chatTitleFanLX"));
-    chatTitle->setTextFormat(Qt::RichText);
+    chatTitle->setTextFormat(Qt::PlainText);
     chatTitle->setWordWrap(true); // 名称过长时换行，而不是把右侧面板撑宽
     chatTitle->setText(QStringLiteral("未选择会话"));
+    // 统计行不再单独展示（存储、会话数、全局未读）。控件保留，避免改成员布局接口。
     headerFanLX = new QLabel(header);
     headerFanLX->setObjectName(QStringLiteral("chatMetaFanLX"));
     headerFanLX->setWordWrap(true);
-    // 聊天页顶部固定显示：本连接属于哪个服务，以及列表里两种标志的含义。
+    headerFanLX->setVisible(false);
+    // 正常连接时这一行就是副标题；未连接 / 切换失败时换成完整提示。初始文案由 refreshHeader 填。
     serviceLabelFanLX = new QLabel(header);
     serviceLabelFanLX->setObjectName(QStringLiteral("chatServiceFanLX"));
+    serviceLabelFanLX->setTextFormat(Qt::PlainText);
     serviceLabelFanLX->setWordWrap(true);
-    serviceLabelFanLX->setText(
-        QStringLiteral("会话列表标志：<span style='color:#0b6bcb'>[好友]</span> 一对一的联系人 ｜ "
-                       "<span style='color:#7b1fa2'>[群]</span> 群聊；两种会话在列表里用不同颜色区分。"));
+    serviceLabelFanLX->setVisible(false);
     auto *headerLayout = new QVBoxLayout(header);
-    headerLayout->setContentsMargins(24, 16, 24, 14);
-    headerLayout->setSpacing(4);
+    headerLayout->setContentsMargins(24, 14, 24, 12);
+    headerLayout->setSpacing(2);
     headerLayout->addWidget(chatTitle);
-    headerLayout->addWidget(headerFanLX);
+    // headerFanLX 不进布局：账号与服务只占 serviceLabel 这一行，避免标题下空出一条。
     headerLayout->addWidget(serviceLabelFanLX);
 
     // 消息区
@@ -505,13 +810,25 @@ void MainWindowFanLX::buildDomainPagesFanLX() {
 
 void MainWindowFanLX::buildMenusFanLX() {
     // 顶部菜单：聊天工具与领域维护都在界面上直接可达。
-    auto *tools = menuBar()->addMenu(QStringLiteral("工具"));
+    // 菜单仍是 QMenuBar / QMenu，这里只统一外观。动作、快捷方式和创建条件不变。
+    auto *bar = menuBar();
+    bar->setObjectName(QStringLiteral("mainMenuBarFanLX"));
+    bar->setNativeMenuBar(false); // 画在窗口里，局部样式才能生效（Windows 上本来也不是系统菜单栏）
+    bar->setStyleSheet(menuBarStyleFanLX());
+    const auto tuneMenu = [](QMenu *menu) {
+        menu->setObjectName(QStringLiteral("mainMenuFanLX"));
+        menu->setStyleSheet(menuPopupStyleFanLX());
+    };
+
+    auto *tools = bar->addMenu(QStringLiteral("工具"));
+    tuneMenu(tools);
     tools->addAction(QStringLiteral("聊天记录查询…"), this, &MainWindowFanLX::onSearchFanLX);
     tools->addAction(QStringLiteral("刷新授权目录"), this, [this] { controllerFanLX->requestDirectory(); });
     tools->addAction(QStringLiteral("刷新会话列表"), this, [this] { controllerFanLX->requestConversations(); });
 
     if (domainFanLX && domainFanLX->opened()) {
-        auto *domainMenu = menuBar()->addMenu(QStringLiteral("领域数据"));
+        auto *domainMenu = bar->addMenu(QStringLiteral("领域数据"));
+        tuneMenu(domainMenu);
         domainMenu->addAction(QStringLiteral("重新读取好友与群列表"), this, [this] {
             emit domainFanLX->dataChangedFanLX();
             statusFanLX->setText(QStringLiteral("已重新读取内存中的领域数据（源文件在启动时已加载）"));
@@ -536,7 +853,8 @@ void MainWindowFanLX::buildMenusFanLX() {
         });
     }
 
-    auto *help = menuBar()->addMenu(QStringLiteral("帮助"));
+    auto *help = bar->addMenu(QStringLiteral("帮助"));
+    tuneMenu(help);
     help->addAction(QStringLiteral("功能与课设条款对照…"), this, &MainWindowFanLX::showAboutFanLX);
 }
 
@@ -570,7 +888,8 @@ void MainWindowFanLX::onIdentityChangedFanLX() {
         controllerFanLX->stop();
         const auto hint = QStringLiteral("%1 已注销或未登录：聊天已断开。请在「账号与服务」里重新登录或切换到已登录的服务")
                               .arg(service);
-        serviceLabelFanLX->setText(QStringLiteral("当前服务 %1（%2）｜ %3").arg(service, accountId, hint));
+        setChatServiceStatusFanLX(serviceLabelFanLX,
+                                  QStringLiteral("当前服务 %1（%2）｜ %3").arg(service, accountId, hint), true);
         statusFanLX->setText(hint);
         refreshHeaderFanLX();
         return;
@@ -583,7 +902,8 @@ void MainWindowFanLX::onIdentityChangedFanLX() {
                                                "请在「账号与服务」里开通并切换到 QQ / 微信 / 微博")
                               : QStringLiteral("%1 不提供聊天：请在「账号与服务」里切换到 QQ / 微信 / 微博")
                                     .arg(service);
-        serviceLabelFanLX->setText(QStringLiteral("当前服务 %1（%2）｜ %3").arg(service, accountId, hint));
+        setChatServiceStatusFanLX(serviceLabelFanLX,
+                                  QStringLiteral("当前服务 %1（%2）｜ %3").arg(service, accountId, hint), true);
         statusFanLX->setText(hint);
         refreshHeaderFanLX();
         return;
@@ -602,19 +922,18 @@ void MainWindowFanLX::onIdentityChangedFanLX() {
         }
     }
     if (!switched) {
-        serviceLabelFanLX->setText(QStringLiteral("当前服务 %1（%2）｜ 聊天未连接：%3")
-                                       .arg(service, accountId, detail));
+        setChatServiceStatusFanLX(serviceLabelFanLX,
+                                  QStringLiteral("当前服务 %1（%2）｜ 聊天未连接：%3")
+                                      .arg(service, accountId, detail),
+                                  true);
         statusFanLX->setText(QStringLiteral("聊天未连接：") + detail);
         refreshHeaderFanLX();
         return;
     }
-    serviceLabelFanLX->setText(
-        QStringLiteral("当前聊天服务：%1（%2）｜ 只显示该服务的好友与群 ｜ 标志："
-                       "<span style='color:#0b6bcb'>[好友]</span> / "
-                       "<span style='color:#7b1fa2'>[群]</span>")
-            .arg(service, accountId));
+    // 切换成功：回到一行副标题。好友/群的颜色标志留在左侧列表，这里不再解释。
     statusFanLX->setText(QStringLiteral("聊天已切换到 %1（%2）：好友与群按服务分别存放")
                              .arg(service, accountId));
+    setChatServiceStatusFanLX(serviceLabelFanLX, chatSubtitleFanLX(service, accountId), false);
     refreshHeaderFanLX();
 }
 
@@ -634,7 +953,7 @@ void MainWindowFanLX::showAboutFanLX() {
             "⑤ 登录管理：登微X 后，本人已开通的服务简单确认即自动登录 —— "
             "登录界面的确认勾选与账号与服务页签。\n"
             "⑥ 展示要求：启动时从文件加载、写操作即时写回、关窗收尾提交；群管理特色可动态切换且成员数据"
-            "不受伤害；聊天使用 TCP 长度帧（中心转发），会话列表用 [好友] / [群] 与颜色区分\n"
+            "不受伤害；聊天使用 TCP 长度帧（中心转发），会话列表用图标区分好友与群\n"
             "   —— 领域数据菜单、群页签与聊天页签。"));
 }
 
@@ -642,40 +961,36 @@ void MainWindowFanLX::refreshHeaderFanLX() {
     storageBackendFanLX = controllerFanLX->storageBackend();
     // 标题栏与页头给用户看的是中文服务名（QQ / 微信 / 微博），控制器内部仍用存储名。
     const auto chatService = controllerFanLX->serviceDisplayName();
-    headerFanLX->setText(QStringLiteral("账号 %1 · 聊天服务 %2 · 存储 %3 · 会话 %4 · 未读 %5")
-                             .arg(accountFanLX, chatService, storageBackendFanLX)
-                             .arg(controllerFanLX->conversations().size())
-                             .arg(controllerFanLX->totalUnread()));
+    // 聊天身份优先用当前连接的账号（切换微信等服务后号码可能与微X号不同）。
+    const auto chatAccount =
+        controllerFanLX->account().isEmpty() ? accountFanLX : controllerFanLX->account();
+    // 存储后端、会话总数、全局未读不再放进标题。未读在左侧角标，且不是当前会话的未读数。
+    const auto subtitle = chatSubtitleFanLX(chatService, chatAccount);
+    headerFanLX->clear();
+    headerFanLX->setVisible(false);
+    // 服务行正在显示未连接 / 切换失败等提示时，不要用副标题把它盖掉。
+    if (serviceLabelFanLX && !serviceLabelFanLX->property("alertFanLX").toBool())
+        setChatServiceStatusFanLX(serviceLabelFanLX, subtitle, false);
     const auto current = controllerFanLX->currentConversation();
-    // 聊天标题区：当前会话的"[类型] 名称"，类型标志沿用列表里的类型颜色。
+    // 聊天标题只显示会话名称。类型颜色留在左侧列表。
     if (auto *chatTitle = findChild<QLabel *>(QStringLiteral("chatTitleFanLX"))) {
-        QString titleHtml = QStringLiteral("未选择会话");
+        QString titleText = QStringLiteral("未选择会话");
         if (!current.isEmpty()) {
-            QString name = current;
-            QString kindText = controllerFanLX->currentConversationKindText();
-            QString kindColor;
+            QString itemTitle;
+            bool group = controllerFanLX->currentConversationIsGroup();
             for (const auto &item : controllerFanLX->conversations()) {
                 if (item.key == current) {
-                    name = item.title;
-                    kindText = item.kindText;
-                    kindColor = item.kindColor;
+                    itemTitle = item.title;
+                    group = item.group;
                     break;
                 }
             }
-            titleHtml = name.toHtmlEscaped();
-            if (!kindText.isEmpty()) {
-                const auto tag = QStringLiteral("[%1]").arg(kindText).toHtmlEscaped();
-                titleHtml = (kindColor.isEmpty()
-                                 ? tag
-                                 : QStringLiteral("<span style='color:%1'>%2</span>")
-                                       .arg(kindColor.toHtmlEscaped(), tag)) +
-                            QStringLiteral(" ") + titleHtml;
-            }
+            titleText = chatConversationTitleFanLX(current, chatAccount, group, itemTitle);
         }
-        chatTitle->setText(titleHtml);
+        chatTitle->setText(titleText);
     }
     if (!current.isEmpty()) {
-        // 标题栏也带上类型标志：窗口标题一眼能看出当前打开的是群还是好友。
+        // 窗口标题仍带类型标志，便于从任务栏区分当前打开的是群还是好友。
         const auto kind = controllerFanLX->currentConversationKindText();
         const auto title = kind.isEmpty() ? current : QStringLiteral("[%1] %2").arg(kind, current);
         setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — %1（%2）").arg(title, chatService));
@@ -769,14 +1084,12 @@ void MainWindowFanLX::onConversationSelectedFanLX(const QModelIndex &index) {
     controllerFanLX->openConversation(key);
     hasPendingNewMessageFanLX = false;
     newMessageHintFanLX->setVisible(false);
-    const auto sequence = controllerFanLX->messages().isEmpty()
-                              ? 0
-                              : controllerFanLX->messages().last().sequence;
-    if (sequence > 0)
-        controllerFanLX->markRead(key, sequence);
+    // 这里不能 markRead：openConversation 刚清空消息并异步请求历史，messages() 还是空的，
+    // 序号只能读到 0。已读要等当前会话的最新一页真正返回后再提交。
     // 打开会话时明确说出这是群还是好友（与列表里的标志同源）。
+    // 只在聊天页显示；人已经离开聊天页时，不把这句普通提示写进底部状态栏。
     const auto kind = controllerFanLX->currentConversationKindText();
-    if (!kind.isEmpty())
+    if (!kind.isEmpty() && tabsFanLX && tabsFanLX->currentIndex() == 0)
         statusFanLX->setText(QStringLiteral("已打开%1会话：%2").arg(kind, key));
     if (historyDialogFanLX)
         historyDialogFanLX->setCurrentConversation(key);
@@ -867,7 +1180,9 @@ void MainWindowFanLX::onSearchFanLX() {
                 controllerFanLX, &ChatControllerFanLX::cancelSearch);
         connect(historyDialogFanLX, &HistoryDialogFanLX::earlierRequestedFanLX, this, [this] {
             historyDialogFanLX->setBusy(true);
+            historyDialogFanLX->setSummary(QStringLiteral("查询中 · 正在加载下一页"));
             if (!controllerFanLX->searchEarlier()) {
+                // 请求没有发出，上一页仍然有效，不能把它画成查询失败或零结果。
                 historyDialogFanLX->setBusy(false);
                 historyDialogFanLX->setSummary(QStringLiteral("下一页未能提交，请重试"));
             }
@@ -877,9 +1192,8 @@ void MainWindowFanLX::onSearchFanLX() {
     for (const auto &item : controllerFanLX->conversations())
         keys << item.key;
     historyDialogFanLX->setConversations(keys);
-    const auto current = controllerFanLX->currentConversation();
-    if (!current.isEmpty())
-        historyDialogFanLX->setCurrentConversation(current);
+    // 没有当前会话时也要落到「所有会话」，不能沿用上一次打开时的选择。
+    historyDialogFanLX->setCurrentConversation(controllerFanLX->currentConversation());
     historyDialogFanLX->show();
     historyDialogFanLX->raise();
 }
@@ -887,63 +1201,54 @@ void MainWindowFanLX::onSearchFanLX() {
 void MainWindowFanLX::showHistoryResultsFanLX() {
     if (!historyDialogFanLX)
         return;
+    const auto error = historyDialogFanLX->filterErrorFanLX();
+    if (!error.isEmpty()) {
+        // 校验失败只提示，不把上一次的结果清成「没有记录」。
+        historyDialogFanLX->setSummary(error);
+        return;
+    }
     const auto key = historyDialogFanLX->conversationKey();
     const auto sender = historyDialogFanLX->senderFilter();
     const auto keyword = historyDialogFanLX->keyword();
-    if (key.isEmpty() && sender.isEmpty() && keyword.isEmpty() && !historyDialogFanLX->useTimeRange()) {
-        historyDialogFanLX->setSummary(QStringLiteral("请指定会话，或填写发送者/关键词做跨会话检索"));
-        return;
-    }
-    QString from, to;
-    if (historyDialogFanLX->useTimeRange()) {
-        from = historyDialogFanLX->fromText(); to = historyDialogFanLX->toText();
-        const auto valid = [](const QString &text) {
-            if (text.isEmpty()) return true;
-            const auto date = QDateTime::fromString(text, Qt::ISODate);
-            return date.isValid() && date.toUTC().toString(QStringLiteral("yyyy-MM-ddTHH:mm:ssZ")) == text;
-        };
-        if ((from.isEmpty() && to.isEmpty()) || !valid(from) || !valid(to) ||
-            (!from.isEmpty() && !to.isEmpty() && from > to)) {
-            historyDialogFanLX->setSummary(QStringLiteral("请输入有效 UTC 时间 YYYY-MM-DDTHH:mm:ssZ，起始不得晚于结束"));
-            return;
-        }
-    }
+    const auto from = historyDialogFanLX->fromText();
+    const auto to = historyDialogFanLX->toText();
     const auto limit = historyDialogFanLX->pageSize();
-    historyDialogFanLX->setBusy(true);
-    if (!controllerFanLX->searchHistory(key, sender, keyword, limit, from, to)) {
-        historyDialogFanLX->setBusy(false);
-        historyDialogFanLX->setSummary(QStringLiteral("查询未能提交：界面繁忙或聊天库不可用"));
-        return;
-    }
-    QString note = QStringLiteral("每页 %1 条（上限 200）；结果按服务器时间倒序").arg(limit);
+    QString note = QStringLiteral("查询中 · 每页 %1 条（上限 200），结果按服务器时间倒序").arg(limit);
     if (historyDialogFanLX->useTimeRange())
-        note += QStringLiteral("；时间范围 %1 ~ %2").arg(historyDialogFanLX->fromText(),
-                                                          historyDialogFanLX->toText());
+        note += QStringLiteral("；时间范围 %1 ~ %2").arg(from, to);
     if (key.isEmpty())
         note += QStringLiteral("；当前为跨会话检索");
+    historyDialogFanLX->setBusy(true);
     historyDialogFanLX->setSummary(note);
+    if (!controllerFanLX->searchHistory(key, sender, keyword, limit, from, to))
+        historyDialogFanLX->setQueryFailed(QStringLiteral("查询未能提交：界面繁忙或聊天库不可用"));
 }
 
 void MainWindowFanLX::onHistoryLoadedFanLX(qint64 queryId, bool hasMore) {
     (void)queryId;
-    if (!historyDialogFanLX)
+    // 控制器已按 queryId 丢掉过期结果。这里再挡住取消或重置之后迟到的信号。
+    if (!historyDialogFanLX || !historyDialogFanLX->isSearchInFlight())
         return;
-    QString text;
+    QList<HistoryResultRowFanLX> rows;
     for (const auto &item : controllerFanLX->searchPage().messages) {
-        text += QStringLiteral("%1  %2  %3%4\n")
-                    .arg(item.acceptedAtUtc.empty() ? QStringLiteral("[原始时间未知]") : QString::fromStdString(item.acceptedAtUtc),
-                         QString::fromStdString(item.sender), QString::fromStdString(item.body),
-                         QStringLiteral("  [") + QString::fromStdString(item.conversationKey) + QStringLiteral("]"));
+        HistoryResultRowFanLX row;
+        row.serverTime = item.acceptedAtUtc.empty() ? QString() : QString::fromStdString(item.acceptedAtUtc);
+        row.sender = QString::fromStdString(item.sender);
+        row.conversationKey = QString::fromStdString(item.conversationKey);
+        row.body = QString::fromStdString(item.body);
+        rows.append(row);
     }
-    if (text.isEmpty())
-        text = QStringLiteral("（没有匹配的记录）");
-    historyDialogFanLX->setResultsText(text);
+    historyDialogFanLX->setResultRows(rows);
     historyDialogFanLX->setBusy(false);
     historyDialogFanLX->setHasMore(hasMore);
-    historyDialogFanLX->setSummary(QStringLiteral("已加载 %1 条%2")
-                                       .arg(controllerFanLX->searchPage().messages.size())
-                                       .arg(hasMore ? QStringLiteral("；点击「下一页」继续")
-                                                    : QStringLiteral("；已到最早一条")));
+    if (rows.isEmpty()) {
+        historyDialogFanLX->setSummary(QStringLiteral("没有找到匹配的聊天记录。可以放宽筛选条件后再查询。"));
+        return;
+    }
+    historyDialogFanLX->setSummary(QStringLiteral("本页 %1 条%2")
+                                       .arg(rows.size())
+                                       .arg(hasMore ? QStringLiteral("，仍有更早的记录，可查看下一页")
+                                                    : QStringLiteral("，已到最后一页")));
 }
 
 void MainWindowFanLX::onDirectoryFanLX(const QList<QString> &friends, const QList<QString> &groups) {
@@ -974,10 +1279,8 @@ void MainWindowFanLX::onStateChangedFanLX(ConnectionStateFanLX state, const QStr
 
 void MainWindowFanLX::onErrorFanLX(const QString &detail) {
     statusFanLX->setText(QStringLiteral("错误：") + detail);
-    if (historyDialogFanLX && historyDialogFanLX->isVisible()) {
-        historyDialogFanLX->setBusy(false);
-        historyDialogFanLX->setSummary(QStringLiteral("查询失败：") + detail);
-    }
+    if (historyDialogFanLX && historyDialogFanLX->isVisible())
+        historyDialogFanLX->setQueryFailed(detail);
 }
 
 void MainWindowFanLX::onMessageArrivedFanLX(const QString &conversationKey, qint64 sequence) {

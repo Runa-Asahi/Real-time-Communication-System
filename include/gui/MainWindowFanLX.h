@@ -23,7 +23,7 @@ class HistoryDialogFanLX;
 
 // 主窗口：把课设要求的全部功能都放进一个窗口的四个页签里，避免"有些功能没显示出来"。
 //
-//   页签 1 聊天      左联系人/群/最近会话（[好友] 蓝 / [群] 紫）+ 未读数，中间消息列表，底部编辑器
+//   页签 1 聊天      左联系人/群/最近会话（好友/群图标 + 名称）+ 未读数，中间消息列表，底部编辑器
 //   页签 2 账号与服务 用户基本信息、开通管理（微X 之下开通 QQ/微信/微博）、登录管理、绑定、资料维护
 //   页签 3 好友       好友增删改查、同服务共同好友、跨服务推荐与共同好友
 //   页签 4 群         群列表、群成员、群特色功能与动态切换、申请/推荐/踢人/子群/解散
@@ -99,7 +99,8 @@ class MainWindowFanLX : public QMainWindow {
     QLabel *headerFanLX = nullptr;
     QLabel *statusFanLX = nullptr;
     QLabel *newMessageHintFanLX = nullptr;
-    // 聊天页顶部的"当前聊天服务 + 好友/群标志说明"（群紫、好友蓝）。
+    // 聊天页标题下的服务行：正常连接时是一行副标题（服务 · 账号）；
+    // 未连接、断线、切换失败等需要用户处理时，显示完整提示。
     QLabel *serviceLabelFanLX = nullptr;
     HistoryDialogFanLX *historyDialogFanLX = nullptr;
     AccountPageFanLX *accountPageFanLX = nullptr;

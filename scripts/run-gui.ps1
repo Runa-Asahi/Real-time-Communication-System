@@ -86,6 +86,32 @@ try {
         } catch { $listening = $false }
 
         if ($listening) {
+            # 端口上已有进程时不能盲用：另一份工程的服务端会占用同一个端口和同一个实例号，
+            # 但 messageId 从分叉点起对不上，客户端就会报「messageId N 内容冲突」并且再也发不出去。
+            $listenerCommand = $null
+            $listenMatch = netstat -ano | Select-String -Pattern ":$portNum\s+\S+\s+LISTENING\s+(\d+)" |
+                Select-Object -First 1
+            if ($listenMatch -and $listenMatch.Matches.Count -gt 0) {
+                $listenPid = [int]$listenMatch.Matches[0].Groups[1].Value
+                $listener = Get-CimInstance Win32_Process -Filter "ProcessId=$listenPid" -ErrorAction SilentlyContinue
+                if ($listener) { $listenerCommand = $listener.CommandLine }
+            }
+            $ownDataDir = Join-Path $root 'data-im-server'
+            $usesThisServer = $false
+            if ($listenerCommand) {
+                $normalized = ($listenerCommand -replace '/', '\').ToLowerInvariant()
+                $usesThisServer = $normalized.Contains($ownDataDir.ToLowerInvariant())
+            }
+            if ($listenerCommand -and -not $usesThisServer) {
+                Write-Host "[错误] $BindHost`:$Port 上的服务端不是本工程的数据目录。"
+                Write-Host "       它的命令行是："
+                Write-Host "       $listenerCommand"
+                Write-Host "       本工程客户端的聊天库与那份服务端记录已经分叉，连上去会报 messageId 内容冲突，消息发不出去。"
+                Write-Host "       请先关掉那个进程，再重新运行本脚本。本脚本会启动："
+                Write-Host "       $srvExe --data-dir $ownDataDir"
+                Wait-BeforeClose
+                exit 1
+            }
             Write-Host "[信息] $BindHost`:$Port 已有服务端在监听，直接使用。"
         } elseif (-not (Test-Path -LiteralPath $srvExe -PathType Leaf)) {
             Write-Host "[警告] 找不到 build\fanlx_app.exe，无法自动启动服务端。"
@@ -129,12 +155,12 @@ try {
     Write-Host "[信息] 数据根：$dataRootAbs"
     Write-Host ''
 
-    # 关键：GUI 必须有自己的窗口上下文。
-    # fanlx_gui.exe 以控制台子系统链接（见 CMakeLists 中关于 WIN32_EXECUTABLE 的说明），
-    # 它会隐藏自己独占的控制台窗口。如果这里不指定 -WindowStyle，新进程会**继承**本
-    # 脚本/父 cmd 的窗口；父窗口一旦被隐藏或随托管进程回收，GUI 会跟着被销毁，
-    # 表现为"脚本说已启动，但窗口一闪而过"。显式给普通窗口即可稳定。
-    $gui = Start-Process -FilePath $guiExe -ArgumentList $guiArgs -PassThru -WindowStyle Normal
+    # GUI 是控制台子系统程序。不指定 -WindowStyle 时它会继承本脚本的控制台，
+    # 父窗口关掉或被藏起来，GUI 会一起被销毁。
+    # -WindowStyle Normal 会按 SW_SHOWNORMAL 再弹出一个空的命令行（每登录一个账号一个），
+    # 程序里的 ShowWindow(SW_HIDE) 抢不过这次显示。Hidden 仍然是独立控制台，只是从一开始就隐藏；
+    # fanlx_gui 随后 FreeConsole，空窗口不会留下来，Qt 窗口不受影响。
+    $gui = Start-Process -FilePath $guiExe -ArgumentList $guiArgs -PassThru -WindowStyle Hidden
     Write-Host "[信息] GUI 已启动（pid $($gui.Id)）。关闭它的窗口即退出。"
 
     # 等 GUI 退出后收尾服务端（仅当我们自己启动的那个）。

@@ -7,8 +7,8 @@
 namespace fanlxGui {
 
 // 会话列表模型：只做展示映射，不做任何网络/数据库调用（数据由控制器推入）。
-// 群与好友在这里用**显示文案 + 前景色**区分（见 ChatControllerFanLX::applyKindFanLX），
-// 因此列表行呈现为"[群] 1001"（紫）与"[好友] 2026002"（蓝），不需要读会话键就能分辨。
+// DisplayRole / TitleRole 仍是"[群] 1001"、"[好友] 2026002"这种带类型前缀的文字，
+// 工具提示、前景色和 KindTextRole 也保持不变。会话列表委托另行画图标，不改这些字符串。
 class ConversationListModelFanLX : public QAbstractListModel {
     Q_OBJECT
 

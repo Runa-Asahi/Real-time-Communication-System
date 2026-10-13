@@ -1,6 +1,10 @@
 #include "gui/GroupPageFanLX.h"
 #include "gui/DomainControllerFanLX.h"
+#include "gui/GroupListDelegateFanLX.h"
 #include "gui/PageKitFanLX.h"
+#include <QAbstractItemModel>
+#include <QApplication>
+#include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -9,7 +13,10 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QSizePolicy>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -31,14 +38,111 @@ QString idOfRowFanLX(const QString &row) {
 // 子页面顶部的"操作对象"提示，refreshFanLX 统一更新文字。
 QLabel *makeScopeLabelFanLX(QWidget *parent, QList<QLabel *> &registry) {
     auto *label = kit::hintLabel(parent);
+    label->setProperty("fanlxKind", QStringLiteral("scope"));
     registry.push_back(label);
     return label;
+}
+
+QLabel *pageTitleFanLX(const QString &text, QWidget *parent) {
+    auto *label = new QLabel(text, parent);
+    label->setProperty("role", QStringLiteral("pageTitle"));
+    return label;
+}
+
+QLabel *sectionTitleFanLX(const QString &text, QWidget *parent) {
+    auto *label = new QLabel(text, parent);
+    label->setProperty("role", QStringLiteral("sectionTitle"));
+    return label;
+}
+
+// 输入框不再拉满整行。数字账号 / 群号用 fanlxKind=mono，字号和颜色交给 app.qss。
+void tuneFieldFanLX(QLineEdit *edit, bool numeric) {
+    edit->setMaximumWidth(480);
+    if (numeric)
+        edit->setProperty("fanlxKind", QStringLiteral("mono"));
+}
+
+void tuneActionButtonFanLX(QPushButton *button, bool expand) {
+    // 首页两列和普通操作行都固定为内容宽度：Expanding 会在窗口拉宽时把按钮拉变形。
+    (void)expand;
+    button->setMinimumSize(120, 32);
+    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+}
+
+// 列表与「暂无数据」放在同一个布局单元格里互斥显示。QGridLayout 不是控件，不包裹 QListWidget。
+void mountListFanLX(QBoxLayout *host, QListWidget *list, int stretch, GroupListDelegateFanLX *delegate) {
+    if (delegate != nullptr) {
+        list->setItemDelegate(delegate);
+        list->setMouseTracking(true);
+        if (auto *viewport = list->viewport()) {
+            viewport->setAttribute(Qt::WA_Hover, true);
+            viewport->setMouseTracking(true);
+        }
+    }
+    auto *label = new QLabel(QStringLiteral("暂无数据"), list->parentWidget());
+    label->setAlignment(Qt::AlignCenter);
+    label->setProperty("role", QStringLiteral("empty"));
+    label->setMinimumHeight(list->minimumHeight());
+    label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto *cell = new QGridLayout();
+    cell->setContentsMargins(0, 0, 0, 0);
+    cell->setSpacing(0);
+    cell->setRowStretch(0, 1);
+    cell->setColumnStretch(0, 1);
+    cell->addWidget(list, 0, 0);
+    cell->addWidget(label, 0, 0);
+    // 列表析构时 QListWidget::clear() 仍会发出 modelReset。连接挂在后创建的 guard 上，
+    // 它会先于内部 model 被销毁并断开槽，避免回调踩进正在析构的列表或已经销毁的标签。
+    auto *guard = new QObject(list);
+    const auto sync = [list = QPointer<QListWidget>(list), label = QPointer<QLabel>(label)] {
+        if (list.isNull() || label.isNull())
+            return;
+        const bool empty = list->count() == 0;
+        list->setVisible(!empty);
+        label->setVisible(empty);
+        if (empty)
+            label->raise();
+        else
+            list->raise();
+    };
+    if (auto *model = list->model()) {
+        QObject::connect(model, &QAbstractItemModel::modelReset, guard, sync);
+        QObject::connect(model, &QAbstractItemModel::rowsInserted, guard,
+                         [sync](const QModelIndex &, int, int) { sync(); });
+        QObject::connect(model, &QAbstractItemModel::rowsRemoved, guard,
+                         [sync](const QModelIndex &, int, int) { sync(); });
+    }
+    sync();
+    host->addLayout(cell, stretch);
+}
+
+QFrame *makeCardFanLX(QWidget *parent) {
+    auto *card = kit::sectionCard(parent);
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(10);
+    return card;
+}
+
+QVBoxLayout *cardLayoutFanLX(QFrame *card) { return static_cast<QVBoxLayout *>(card->layout()); }
+
+// 服务切换时，连同包住分组框的卡片一起显示或隐藏，避免留下空白白卡。
+void syncWrappedCardFanLX(QWidget *box, bool visible) {
+    if (!box)
+        return;
+    box->setVisible(visible);
+    if (auto *parent = box->parentWidget()) {
+        if (parent->objectName() == QLatin1String("card"))
+            parent->setVisible(visible);
+    }
 }
 
 } // namespace
 
 GroupPageFanLX::GroupPageFanLX(DomainControllerFanLX *controller, QWidget *parent)
     : QWidget(parent), controllerFanLX(controller) {
+    setObjectName(QStringLiteral("groupPageFanLX"));
+    setAttribute(Qt::WA_StyledBackground, true);
     stackFanLX = new QStackedWidget(this);
     kit::setHomePage(stackFanLX, buildHomeFanLX());
     kit::addSubPage(stackFanLX, QStringLiteral("加入与待处理"), buildJoinBodyFanLX());
@@ -47,8 +151,30 @@ GroupPageFanLX::GroupPageFanLX(DomainControllerFanLX *controller, QWidget *paren
     kit::addSubPage(stackFanLX, QStringLiteral("群设置"), buildSettingsBodyFanLX());
 
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(6, 6, 6, 6);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
     outer->addWidget(stackFanLX);
+
+    // 滚动区底色交给 app.qss。子页面标题改放到返回按钮下方，返回行里那份标题藏起来，文字仍在。
+    for (auto *area : findChildren<QScrollArea *>()) {
+        area->setObjectName(QStringLiteral("groupScrollFanLX"));
+        if (auto *viewport = area->viewport()) {
+            viewport->setObjectName(QStringLiteral("groupViewportFanLX"));
+            viewport->setAttribute(Qt::WA_StyledBackground, true);
+            viewport->setAutoFillBackground(false);
+        }
+    }
+    for (auto *back : findChildren<QPushButton *>()) {
+        if (back->property("role").toString() != QLatin1String("back"))
+            continue;
+        auto *page = back->parentWidget();
+        if (!page)
+            continue;
+        for (auto *label : page->findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (label->property("role").toString() == QLatin1String("title"))
+                label->setVisible(false);
+        }
+    }
 
     connect(controllerFanLX, &DomainControllerFanLX::dataChangedFanLX, this, &GroupPageFanLX::refreshFanLX);
     connect(controllerFanLX, &DomainControllerFanLX::identityChangedFanLX, this,
@@ -59,6 +185,8 @@ GroupPageFanLX::GroupPageFanLX(DomainControllerFanLX *controller, QWidget *paren
 QWidget *GroupPageFanLX::buildHomeFanLX() {
     auto *home = new QWidget();
     auto *layout = new QVBoxLayout(home);
+    layout->setContentsMargins(16, 12, 16, 16);
+    layout->setSpacing(12);
 
     headerLabelFanLX = new QLabel(home);
     headerLabelFanLX->setProperty("role", QStringLiteral("title"));
@@ -71,11 +199,20 @@ QWidget *GroupPageFanLX::buildHomeFanLX() {
     contentFanLX = new QWidget(home);
     auto *content = new QVBoxLayout(contentFanLX);
     content->setContentsMargins(0, 0, 0, 0);
+    content->setSpacing(12);
 
     groupListFanLX = new QListWidget(contentFanLX);
     groupListFanLX->setMinimumHeight(120);
-    groupEditFanLX = new QLineEdit(contentFanLX);
+
+    auto *idCard = makeCardFanLX(contentFanLX);
+    groupEditFanLX = new QLineEdit(idCard);
     groupEditFanLX->setPlaceholderText(QStringLiteral("群号（选中列表中的群自动填入，也可手输）"));
+    tuneFieldFanLX(groupEditFanLX, true);
+    cardLayoutFanLX(idCard)->addWidget(sectionTitleFanLX(QStringLiteral("当前群号"), idCard));
+    cardLayoutFanLX(idCard)->addWidget(groupEditFanLX, 0, Qt::AlignLeft);
+
+    auto *memberCaption = new QLabel(QStringLiteral("群成员"), contentFanLX);
+    memberCaption->setProperty("role", QStringLiteral("sectionTitle"));
     memberListFanLX = new QListWidget(contentFanLX);
     memberListFanLX->setMinimumHeight(110);
 
@@ -83,17 +220,27 @@ QWidget *GroupPageFanLX::buildHomeFanLX() {
     auto *memberNav = kit::navButton(QStringLiteral("成员管理  ›"), contentFanLX);
     discussionNavFanLX = kit::navButton(QStringLiteral("子群  ›"), contentFanLX);
     auto *settingsNav = kit::navButton(QStringLiteral("群设置  ›"), contentFanLX);
+    for (auto *button : {joinNavFanLX, memberNav, discussionNavFanLX, settingsNav})
+        tuneActionButtonFanLX(button, true);
+    auto *entryCard = makeCardFanLX(contentFanLX);
+    cardLayoutFanLX(entryCard)->addWidget(sectionTitleFanLX(QStringLiteral("功能入口"), entryCard));
     auto *grid = new QGridLayout();
+    grid->setHorizontalSpacing(12);
+    grid->setVerticalSpacing(12);
+    grid->setColumnStretch(0, 1);
+    grid->setColumnStretch(1, 1);
     grid->addWidget(joinNavFanLX, 0, 0);
     grid->addWidget(memberNav, 0, 1);
     grid->addWidget(discussionNavFanLX, 1, 0);
     grid->addWidget(settingsNav, 1, 1);
+    cardLayoutFanLX(entryCard)->addLayout(grid);
 
-    content->addWidget(groupListFanLX, 1);
-    content->addWidget(groupEditFanLX);
-    content->addWidget(new QLabel(QStringLiteral("群成员"), contentFanLX));
-    content->addWidget(memberListFanLX, 1);
-    content->addLayout(grid);
+    mountListFanLX(content, groupListFanLX, 1, nullptr);
+    content->addWidget(idCard);
+    content->addWidget(memberCaption);
+    mountListFanLX(content, memberListFanLX, 1,
+                   new GroupListDelegateFanLX(GroupListDelegateFanLX::Kind::Member, memberListFanLX));
+    content->addWidget(entryCard);
     layout->addWidget(contentFanLX, 1);
 
     connect(groupListFanLX, &QListWidget::currentItemChanged, this,
@@ -115,57 +262,106 @@ QWidget *GroupPageFanLX::buildHomeFanLX() {
 QWidget *GroupPageFanLX::buildJoinBodyFanLX() {
     auto *body = new QWidget();
     auto *layout = new QVBoxLayout(body);
-    layout->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->setContentsMargins(16, 12, 16, 16);
+    layout->setSpacing(12);
+    auto *heading = new QVBoxLayout();
+    heading->setSpacing(4);
+    heading->addWidget(pageTitleFanLX(QStringLiteral("加入与待处理"), body));
+    heading->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->addLayout(heading);
 
     // ① 邀请他人入群：QQ 与微信都有，但流程不同（提示文字随服务变化，见 applyServiceFanLX）。
-    inviteBoxFanLX = new QGroupBox(QStringLiteral("邀请他人入群"), body);
+    auto *inviteCard = makeCardFanLX(body);
+    cardLayoutFanLX(inviteCard)->addWidget(sectionTitleFanLX(QStringLiteral("邀请他人入群"), inviteCard));
+    inviteBoxFanLX = new QGroupBox(QStringLiteral("邀请他人入群"), inviteCard);
     inviteTargetEditFanLX = new QLineEdit(inviteBoxFanLX);
     inviteTargetEditFanLX->setPlaceholderText(QStringLiteral("被邀请人的账号"));
+    tuneFieldFanLX(inviteTargetEditFanLX, true);
     inviteButtonFanLX = kit::primaryButton(QStringLiteral("邀请入群"), inviteBoxFanLX);
+    tuneActionButtonFanLX(inviteButtonFanLX, false);
     inviteHintFanLX = kit::hintLabel(inviteBoxFanLX);
     auto *inviteRow = new QHBoxLayout();
-    inviteRow->addWidget(inviteTargetEditFanLX, 1);
-    inviteRow->addWidget(inviteButtonFanLX);
+    inviteRow->setSpacing(12);
+    inviteRow->addWidget(inviteTargetEditFanLX, 0);
+    inviteRow->addWidget(inviteButtonFanLX, 0);
+    inviteRow->addStretch(1);
     auto *inviteLayout = new QVBoxLayout(inviteBoxFanLX);
+    inviteLayout->setContentsMargins(0, 0, 0, 0);
+    inviteLayout->setSpacing(8);
     inviteLayout->addLayout(inviteRow);
     inviteLayout->addWidget(inviteHintFanLX);
+    cardLayoutFanLX(inviteCard)->addWidget(inviteBoxFanLX);
 
-    // ② QQ：申请 - 审批
-    auto *qqBox = new QGroupBox(QStringLiteral("申请与审批（QQ）"), body);
+    // ② QQ：申请 - 审批。拒绝与批准分开，危险操作单独成组。
+    auto *qqCard = makeCardFanLX(body);
+    cardLayoutFanLX(qqCard)->addWidget(sectionTitleFanLX(QStringLiteral("申请与审批"), qqCard));
+    auto *qqBox = new QGroupBox(QStringLiteral("申请与审批（QQ）"), qqCard);
     qqJoinBoxFanLX = qqBox;
     applyButtonFanLX = kit::navButton(QStringLiteral("申请加入群"), qqBox);
-    applyButtonFanLX->setMinimumHeight(34);
+    tuneActionButtonFanLX(applyButtonFanLX, false);
     targetAccountEditFanLX = new QLineEdit(qqBox);
     targetAccountEditFanLX->setPlaceholderText(QStringLiteral("申请人账号（群主 / 管理员审批时填写）"));
+    tuneFieldFanLX(targetAccountEditFanLX, true);
     approveButtonFanLX = kit::primaryButton(QStringLiteral("批准入群申请"), qqBox);
     rejectApplyButtonFanLX = kit::dangerButton(QStringLiteral("拒绝入群申请"), qqBox);
+    tuneActionButtonFanLX(approveButtonFanLX, false);
+    tuneActionButtonFanLX(rejectApplyButtonFanLX, false);
     auto *approveRow = new QHBoxLayout();
-    approveRow->addWidget(targetAccountEditFanLX, 1);
-    approveRow->addWidget(approveButtonFanLX);
-    approveRow->addWidget(rejectApplyButtonFanLX);
+    approveRow->setSpacing(12);
+    approveRow->addWidget(targetAccountEditFanLX, 0);
+    approveRow->addWidget(approveButtonFanLX, 0);
+    approveRow->addStretch(1);
+    auto *rejectRow = new QHBoxLayout();
+    rejectRow->addWidget(rejectApplyButtonFanLX, 0);
+    rejectRow->addStretch(1);
     auto *qqLayout = new QVBoxLayout(qqBox);
-    qqLayout->addWidget(applyButtonFanLX);
+    qqLayout->setContentsMargins(0, 0, 0, 0);
+    qqLayout->setSpacing(10);
+    qqLayout->addWidget(applyButtonFanLX, 0, Qt::AlignLeft);
     qqLayout->addLayout(approveRow);
+    qqLayout->addSpacing(16);
+    qqLayout->addLayout(rejectRow);
+    cardLayoutFanLX(qqCard)->addWidget(qqBox);
 
     // ③ 微信：本人收到的推荐要由本人确认
-    auto *wechatBox = new QGroupBox(QStringLiteral("收到的入群推荐（微信）"), body);
+    auto *wechatCard = makeCardFanLX(body);
+    cardLayoutFanLX(wechatCard)->addWidget(sectionTitleFanLX(QStringLiteral("收到的入群推荐"), wechatCard));
+    auto *wechatBox = new QGroupBox(QStringLiteral("收到的入群推荐（微信）"), wechatCard);
     wechatJoinBoxFanLX = wechatBox;
     confirmInviteButtonFanLX = kit::primaryButton(QStringLiteral("确认本人的入群推荐"), wechatBox);
     rejectInviteButtonFanLX = kit::dangerButton(QStringLiteral("拒绝本人的入群推荐"), wechatBox);
-    auto *wechatRow = new QHBoxLayout(wechatBox);
-    wechatRow->addWidget(confirmInviteButtonFanLX);
-    wechatRow->addWidget(rejectInviteButtonFanLX);
-    wechatRow->addStretch(1);
+    tuneActionButtonFanLX(confirmInviteButtonFanLX, false);
+    tuneActionButtonFanLX(rejectInviteButtonFanLX, false);
+    auto *confirmRow = new QHBoxLayout();
+    confirmRow->addWidget(confirmInviteButtonFanLX, 0);
+    confirmRow->addStretch(1);
+    auto *rejectInviteRow = new QHBoxLayout();
+    rejectInviteRow->addWidget(rejectInviteButtonFanLX, 0);
+    rejectInviteRow->addStretch(1);
+    auto *wechatLayout = new QVBoxLayout(wechatBox);
+    wechatLayout->setContentsMargins(0, 0, 0, 0);
+    wechatLayout->setSpacing(10);
+    wechatLayout->addLayout(confirmRow);
+    wechatLayout->addSpacing(16);
+    wechatLayout->addLayout(rejectInviteRow);
+    cardLayoutFanLX(wechatCard)->addWidget(wechatBox);
 
     leaveButtonFanLX = kit::dangerButton(QStringLiteral("退出该群"), body);
+    tuneActionButtonFanLX(leaveButtonFanLX, false);
     pendingListFanLX = new QListWidget(body);
+    pendingListFanLX->setObjectName(QStringLiteral("groupPendingListFanLX"));
+    pendingListFanLX->setFrameShape(QFrame::NoFrame);
     pendingListFanLX->setMinimumHeight(110);
+    auto *pendingCaption = new QLabel(QStringLiteral("待审批 / 待确认"), body);
+    pendingCaption->setProperty("role", QStringLiteral("sectionTitle"));
 
-    layout->addWidget(inviteBoxFanLX);
-    layout->addWidget(qqJoinBoxFanLX);
-    layout->addWidget(wechatJoinBoxFanLX);
-    layout->addWidget(new QLabel(QStringLiteral("待审批 / 待确认"), body));
-    layout->addWidget(pendingListFanLX, 1);
+    layout->addWidget(inviteCard);
+    layout->addWidget(qqCard);
+    layout->addWidget(wechatCard);
+    layout->addWidget(pendingCaption);
+    mountListFanLX(layout, pendingListFanLX, 1,
+                   new GroupListDelegateFanLX(GroupListDelegateFanLX::Kind::Pending, pendingListFanLX));
+    layout->addSpacing(16);
     layout->addWidget(leaveButtonFanLX, 0, Qt::AlignLeft);
 
     const auto service = [this] { return controllerFanLX->currentService(); };
@@ -200,34 +396,51 @@ QWidget *GroupPageFanLX::buildJoinBodyFanLX() {
 QWidget *GroupPageFanLX::buildMemberBodyFanLX() {
     auto *body = new QWidget();
     auto *layout = new QVBoxLayout(body);
-    layout->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->setContentsMargins(16, 12, 16, 16);
+    layout->setSpacing(12);
+    auto *heading = new QVBoxLayout();
+    heading->setSpacing(4);
+    heading->addWidget(pageTitleFanLX(QStringLiteral("成员管理"), body));
+    heading->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->addLayout(heading);
 
-    memberTargetEditFanLX = new QLineEdit(body);
+    auto *card = makeCardFanLX(body);
+    cardLayoutFanLX(card)->addWidget(sectionTitleFanLX(QStringLiteral("成员操作"), card));
+    memberTargetEditFanLX = new QLineEdit(card);
     memberTargetEditFanLX->setPlaceholderText(QStringLiteral("目标成员账号"));
-    kickButtonFanLX = kit::dangerButton(QStringLiteral("挨 T（移出成员）"), body);
-    transferButtonFanLX = kit::navButton(QStringLiteral("转让群主"), body);
-    transferButtonFanLX->setMinimumHeight(34);
+    tuneFieldFanLX(memberTargetEditFanLX, true);
+    kickButtonFanLX = kit::dangerButton(QStringLiteral("挨 T（移出成员）"), card);
+    transferButtonFanLX = kit::navButton(QStringLiteral("转让群主"), card);
+    tuneActionButtonFanLX(kickButtonFanLX, false);
+    tuneActionButtonFanLX(transferButtonFanLX, false);
 
     // 管理员制度只有 QQ 群有：微信群只有群主一个特权账号。
-    adminBoxFanLX = new QWidget(body);
+    adminBoxFanLX = new QWidget(card);
     assignAdminButtonFanLX = kit::navButton(QStringLiteral("任命管理员"), adminBoxFanLX);
     revokeAdminButtonFanLX = kit::navButton(QStringLiteral("撤销管理员"), adminBoxFanLX);
-    assignAdminButtonFanLX->setMinimumHeight(34);
-    revokeAdminButtonFanLX->setMinimumHeight(34);
+    tuneActionButtonFanLX(assignAdminButtonFanLX, false);
+    tuneActionButtonFanLX(revokeAdminButtonFanLX, false);
     auto *adminRow = new QHBoxLayout(adminBoxFanLX);
     adminRow->setContentsMargins(0, 0, 0, 0);
+    adminRow->setSpacing(12);
     adminRow->addWidget(assignAdminButtonFanLX);
     adminRow->addWidget(revokeAdminButtonFanLX);
     adminRow->addStretch(1);
 
-    auto *row = new QHBoxLayout();
-    row->addWidget(kickButtonFanLX);
-    row->addWidget(transferButtonFanLX);
-    row->addStretch(1);
+    auto *normalRow = new QHBoxLayout();
+    normalRow->setSpacing(12);
+    normalRow->addWidget(transferButtonFanLX);
+    normalRow->addWidget(adminBoxFanLX);
+    normalRow->addStretch(1);
+    auto *dangerRow = new QHBoxLayout();
+    dangerRow->addWidget(kickButtonFanLX);
+    dangerRow->addStretch(1);
 
-    layout->addWidget(memberTargetEditFanLX);
-    layout->addLayout(row);
-    layout->addWidget(adminBoxFanLX);
+    cardLayoutFanLX(card)->addWidget(memberTargetEditFanLX, 0, Qt::AlignLeft);
+    cardLayoutFanLX(card)->addLayout(normalRow);
+    cardLayoutFanLX(card)->addSpacing(16);
+    cardLayoutFanLX(card)->addLayout(dangerRow);
+    layout->addWidget(card);
     layout->addStretch(1);
 
     const auto service = [this] { return controllerFanLX->currentService(); };
@@ -249,26 +462,45 @@ QWidget *GroupPageFanLX::buildMemberBodyFanLX() {
 QWidget *GroupPageFanLX::buildDiscussionBodyFanLX() {
     auto *body = new QWidget();
     auto *layout = new QVBoxLayout(body);
-    layout->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->setContentsMargins(16, 12, 16, 16);
+    layout->setSpacing(12);
+    auto *heading = new QVBoxLayout();
+    heading->setSpacing(4);
+    heading->addWidget(pageTitleFanLX(QStringLiteral("子群（讨论组）"), body));
+    heading->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->addLayout(heading);
 
-    discussionIdEditFanLX = new QLineEdit(body);
+    auto *card = makeCardFanLX(body);
+    cardLayoutFanLX(card)->addWidget(sectionTitleFanLX(QStringLiteral("子群操作"), card));
+    discussionIdEditFanLX = new QLineEdit(card);
     discussionIdEditFanLX->setPlaceholderText(QStringLiteral("子群编号，如 D1"));
-    discussionTargetEditFanLX = new QLineEdit(body);
+    tuneFieldFanLX(discussionIdEditFanLX, true);
+    discussionTargetEditFanLX = new QLineEdit(card);
     discussionTargetEditFanLX->setPlaceholderText(QStringLiteral("要加入子群的成员账号"));
-    createDiscussionButtonFanLX = kit::primaryButton(QStringLiteral("创建子群/讨论组"), body);
-    joinDiscussionButtonFanLX = kit::navButton(QStringLiteral("把成员加入子群"), body);
-    joinDiscussionButtonFanLX->setMinimumHeight(34);
+    tuneFieldFanLX(discussionTargetEditFanLX, true);
+    createDiscussionButtonFanLX = kit::primaryButton(QStringLiteral("创建子群/讨论组"), card);
+    joinDiscussionButtonFanLX = kit::navButton(QStringLiteral("把成员加入子群"), card);
+    tuneActionButtonFanLX(createDiscussionButtonFanLX, false);
+    tuneActionButtonFanLX(joinDiscussionButtonFanLX, false);
     discussionListFanLX = new QListWidget(body);
+    discussionListFanLX->setObjectName(QStringLiteral("groupDiscussionListFanLX"));
+    discussionListFanLX->setFrameShape(QFrame::NoFrame);
     discussionListFanLX->setMinimumHeight(110);
 
     auto *row = new QHBoxLayout();
+    row->setSpacing(12);
     row->addWidget(createDiscussionButtonFanLX);
     row->addWidget(joinDiscussionButtonFanLX);
     row->addStretch(1);
-    layout->addWidget(discussionIdEditFanLX);
-    layout->addWidget(discussionTargetEditFanLX);
-    layout->addLayout(row);
-    layout->addWidget(discussionListFanLX, 1);
+    cardLayoutFanLX(card)->addWidget(discussionIdEditFanLX, 0, Qt::AlignLeft);
+    cardLayoutFanLX(card)->addWidget(discussionTargetEditFanLX, 0, Qt::AlignLeft);
+    cardLayoutFanLX(card)->addLayout(row);
+    layout->addWidget(card);
+    auto *listCaption = new QLabel(QStringLiteral("子群记录"), body);
+    listCaption->setProperty("role", QStringLiteral("sectionTitle"));
+    layout->addWidget(listCaption);
+    mountListFanLX(layout, discussionListFanLX, 1,
+                   new GroupListDelegateFanLX(GroupListDelegateFanLX::Kind::Discussion, discussionListFanLX));
 
     const auto service = [this] { return controllerFanLX->currentService(); };
     const auto group = [this] { return groupIdFanLX(); };
@@ -285,44 +517,68 @@ QWidget *GroupPageFanLX::buildDiscussionBodyFanLX() {
 QWidget *GroupPageFanLX::buildSettingsBodyFanLX() {
     auto *body = new QWidget();
     auto *layout = new QVBoxLayout(body);
-    layout->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->setContentsMargins(16, 12, 16, 16);
+    layout->setSpacing(12);
+    auto *heading = new QVBoxLayout();
+    heading->setSpacing(4);
+    heading->addWidget(pageTitleFanLX(QStringLiteral("群设置"), body));
+    heading->addWidget(makeScopeLabelFanLX(body, scopeLabelsFanLX));
+    layout->addLayout(heading);
 
-    policyViewFanLX = new QPlainTextEdit(body);
+    auto *policyCard = makeCardFanLX(body);
+    cardLayoutFanLX(policyCard)->addWidget(sectionTitleFanLX(QStringLiteral("群特色"), policyCard));
+    policyViewFanLX = new QPlainTextEdit(policyCard);
     policyViewFanLX->setReadOnly(true);
     policyViewFanLX->setMinimumHeight(140);
-    auto *policyBox = new QGroupBox(QStringLiteral("群特色"), body);
+    auto *policyBox = new QGroupBox(QStringLiteral("群特色"), policyCard);
     auto *policyLayout = new QVBoxLayout(policyBox);
+    policyLayout->setContentsMargins(0, 0, 0, 0);
+    policyLayout->setSpacing(10);
     policyLayout->addWidget(policyViewFanLX);
     // 动态变换：只替换策略对象，成员、加入序号与子群记录原地保留；
     // 只显示"变成另一种"的那个按钮（见 refreshFanLX）。
     toQqButtonFanLX = kit::navButton(QStringLiteral("切换为 QQ 群管理特色"), policyBox);
     toWechatButtonFanLX = kit::navButton(QStringLiteral("切换为微信群管理特色"), policyBox);
-    toQqButtonFanLX->setMinimumHeight(34);
-    toWechatButtonFanLX->setMinimumHeight(34);
+    tuneActionButtonFanLX(toQqButtonFanLX, false);
+    tuneActionButtonFanLX(toWechatButtonFanLX, false);
     auto *switchRow = new QHBoxLayout();
+    switchRow->setSpacing(12);
     switchRow->addWidget(toQqButtonFanLX);
     switchRow->addWidget(toWechatButtonFanLX);
     switchRow->addStretch(1);
     policyLayout->addLayout(switchRow);
+    cardLayoutFanLX(policyCard)->addWidget(policyBox);
 
-    groupNameEditFanLX = new QLineEdit(body);
+    auto *basicCard = makeCardFanLX(body);
+    cardLayoutFanLX(basicCard)->addWidget(sectionTitleFanLX(QStringLiteral("群基本操作"), basicCard));
+    groupNameEditFanLX = new QLineEdit(basicCard);
     groupNameEditFanLX->setPlaceholderText(QStringLiteral("群名"));
-    renameButtonFanLX = kit::primaryButton(QStringLiteral("群改名"), body);
-    createGroupButtonFanLX = kit::navButton(QStringLiteral("创建群"), body);
+    tuneFieldFanLX(groupNameEditFanLX, false);
+    renameButtonFanLX = kit::primaryButton(QStringLiteral("群改名"), basicCard);
+    createGroupButtonFanLX = kit::navButton(QStringLiteral("创建群"), basicCard);
     createGroupButtonFanLX->setToolTip(QStringLiteral("使用首页填写的群号创建新群"));
-    createGroupButtonFanLX->setMinimumHeight(34);
-    dissolveButtonFanLX = kit::dangerButton(QStringLiteral("解散该群"), body);
+    dissolveButtonFanLX = kit::dangerButton(QStringLiteral("解散该群"), basicCard);
+    tuneActionButtonFanLX(renameButtonFanLX, false);
+    tuneActionButtonFanLX(createGroupButtonFanLX, false);
+    tuneActionButtonFanLX(dissolveButtonFanLX, false);
     auto *nameRow = new QHBoxLayout();
-    nameRow->addWidget(groupNameEditFanLX, 1);
-    nameRow->addWidget(renameButtonFanLX);
-    auto *actionRow = new QHBoxLayout();
-    actionRow->addWidget(createGroupButtonFanLX);
-    actionRow->addWidget(dissolveButtonFanLX);
-    actionRow->addStretch(1);
+    nameRow->setSpacing(12);
+    nameRow->addWidget(groupNameEditFanLX, 0);
+    nameRow->addWidget(renameButtonFanLX, 0);
+    nameRow->addStretch(1);
+    auto *createRow = new QHBoxLayout();
+    createRow->addWidget(createGroupButtonFanLX, 0);
+    createRow->addStretch(1);
+    auto *dangerRow = new QHBoxLayout();
+    dangerRow->addWidget(dissolveButtonFanLX, 0);
+    dangerRow->addStretch(1);
+    cardLayoutFanLX(basicCard)->addLayout(nameRow);
+    cardLayoutFanLX(basicCard)->addLayout(createRow);
+    cardLayoutFanLX(basicCard)->addSpacing(16);
+    cardLayoutFanLX(basicCard)->addLayout(dangerRow);
 
-    layout->addWidget(policyBox);
-    layout->addLayout(nameRow);
-    layout->addLayout(actionRow);
+    layout->addWidget(policyCard);
+    layout->addWidget(basicCard);
     layout->addStretch(1);
 
     const auto service = [this] { return controllerFanLX->currentService(); };
@@ -361,8 +617,8 @@ void GroupPageFanLX::applyServiceFanLX(const QString &service) {
     unsupportedLabelFanLX->setVisible(!usable);
     contentFanLX->setVisible(usable);
     // QQ：申请-审批、管理员、子群；微信：推荐-确认，只有群主是特权账号。
-    qqJoinBoxFanLX->setVisible(qq);
-    wechatJoinBoxFanLX->setVisible(wechat);
+    syncWrappedCardFanLX(qqJoinBoxFanLX, qq);
+    syncWrappedCardFanLX(wechatJoinBoxFanLX, wechat);
     adminBoxFanLX->setVisible(qq);
     discussionNavFanLX->setVisible(qq);
     joinNavFanLX->setText(qq ? QStringLiteral("邀请、申请与审批  ›") : QStringLiteral("邀请与推荐确认  ›"));
@@ -381,7 +637,12 @@ void GroupPageFanLX::refreshFanLX() {
     if (!controllerFanLX->opened())
         return;
     const auto service = controllerFanLX->currentService();
-    kit::applyAccent(this, service);
+    // 应用级样式表已经带上群页规则时，不再套页面样式表。
+    // 页面自己的样式表会压过 QApplication::setStyleSheet，服务主题色就会盖住这套固定配色。
+    const bool styledByApplication =
+        qApp && qApp->styleSheet().contains(QStringLiteral("QWidget#groupPageFanLX"));
+    if (!styledByApplication)
+        kit::applyAccent(this, service);
     applyServiceFanLX(service);
 
     // 切换服务后群命名空间变了（QQ 群 / 微信群各存各的），上一个服务选中的群号在这里
@@ -398,8 +659,6 @@ void GroupPageFanLX::refreshFanLX() {
     if (serviceChanged || groupListFanLX->count() != rows.size()) {
         groupListFanLX->clear();
         groupListFanLX->addItems(rows);
-        if (groupListFanLX->count() == 0)
-            groupListFanLX->addItem(QStringLiteral("（%1 上没有本人参与的群）").arg(service));
     } else {
         bool same = true;
         for (int index = 0; index < rows.size() && same; ++index)
@@ -426,7 +685,7 @@ void GroupPageFanLX::refreshFanLX() {
                                   .arg(rows.size()));
     for (auto *label : scopeLabelsFanLX)
         label->setText(group.isEmpty() ? QStringLiteral("尚未选择群：请先回到首页选中或填写群号")
-                                       : QStringLiteral("操作对象：群 %1").arg(group));
+                                       : QStringLiteral("操作对象: 群 %1").arg(group));
 
     const auto policy = controllerFanLX->policyText(service, group);
     policyViewFanLX->setPlainText(policy);
@@ -437,18 +696,12 @@ void GroupPageFanLX::refreshFanLX() {
 
     memberListFanLX->clear();
     memberListFanLX->addItems(controllerFanLX->memberRows(service, group));
-    if (memberListFanLX->count() == 0)
-        memberListFanLX->addItem(QStringLiteral("（无成员数据：该群不存在或无权查看）"));
 
     pendingListFanLX->clear();
     pendingListFanLX->addItems(controllerFanLX->pendingRows(service, group));
-    if (pendingListFanLX->count() == 0)
-        pendingListFanLX->addItem(QStringLiteral("（没有待处理记录）"));
 
     discussionListFanLX->clear();
     discussionListFanLX->addItems(controllerFanLX->discussionRows(service, group));
-    if (discussionListFanLX->count() == 0)
-        discussionListFanLX->addItem(QStringLiteral("（没有子群）"));
 }
 
 } // namespace fanlxGui

@@ -392,11 +392,29 @@ struct ImClientFanLX::Impl {
         out.queryId = event.queryId;
         out.requestId = event.requestId;
         if (event.kind == DbEventFanLX::KindFanLX::Failure) {
-            std::lock_guard<std::mutex> guard(correlationMutex);
-            pendingDeliveries.erase(event.commandId);
-            pendingSends.erase(event.commandId);
-            out.kind = ImClientEventFanLX::KindFanLX::SendRejected;
+            if (event.customName == "mark-read") {
+                out.kind = ImClientEventFanLX::KindFanLX::Error;
+                out.detail = "已读状态未能写入：" + event.failureReason;
+                pushEvent(std::move(out));
+                return;
+            }
+            bool delivery = false;
+            {
+                std::lock_guard<std::mutex> guard(correlationMutex);
+                delivery = pendingDeliveries.erase(event.commandId) > 0;
+                pendingSends.erase(event.commandId);
+            }
+            // 投递失败不是“刚发出的那条被拒绝”。messageId 内容冲突表示本地编号和服务端
+            // 不是同一份历史（常见原因：9500 上跑着另一份数据目录的服务端）。
+            out.kind = delivery ? ImClientEventFanLX::KindFanLX::Error
+                                : ImClientEventFanLX::KindFanLX::SendRejected;
             out.detail = event.failureReason;
+            if (delivery && event.failureReason.find("messageId ") != std::string::npos &&
+                event.failureReason.find("内容冲突") != std::string::npos) {
+                out.detail += "。本机聊天库与当前端口上的服务端不是同一份记录。"
+                              "请关掉占用该端口的其他服务端，改用本工程 data-im-server 后再登录；"
+                              "在此之前这条以及后面的消息都送不进来。";
+            }
             pushEvent(std::move(out));
             return;
         }
@@ -452,7 +470,12 @@ struct ImClientFanLX::Impl {
         }
         if (out.kind == ImClientEventFanLX::KindFanLX::Delivered)
             return;
-        if (event.customName == "history") {
+        if (event.customName == "mark-read") {
+            // 游标已经落库，附带的会话摘要才是未读数的确认结果。
+            out.kind = ImClientEventFanLX::KindFanLX::Conversations;
+            out.conversations = event.conversations;
+            out.sequence = event.counter;
+        } else if (event.customName == "history") {
             out.kind = ImClientEventFanLX::KindFanLX::History;
             out.history = event.history;
         } else if (event.customName == "conversations") {
@@ -1008,6 +1031,7 @@ bool ImClientFanLX::submitMarkRead(const std::string &conversationKey, std::int6
         return false;
     DbCommandFanLX command;
     command.kind = DbCommandFanLX::KindFanLX::MarkRead;
+    command.customName = "mark-read";
     command.conversationKey = conversationKey;
     command.conversationSequence = sequence;
     impl.postCommandFanLX(command);

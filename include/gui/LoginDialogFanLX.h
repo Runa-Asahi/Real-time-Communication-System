@@ -56,6 +56,10 @@ class LoginDialogFanLX : public QDialog {
     void submitFanLX();
     void showStatusFanLX(const QString &text, bool good);
     void setSettingsVisibleFanLX(bool visible);
+    // 把窗口高度钉在「当前宽度下内容真正需要的高度」上。
+    // 只设 setFixedWidth 时，换行标签的 minimumHeightForWidth 比 sizeHint 更高，
+    // Windows 会把窗口拉高并打印 setGeometry 警告。
+    void fitHeightToContentsFanLX();
     // 随服务器地址/端口/微X号变化刷新"登录后数据目录"预览。
     void updateDerivedPathFanLX();
     // 打开注册窗口（注册成功后把微X号带回登录框）。

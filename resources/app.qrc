@@ -1,0 +1,9 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/">
+    <file>app.qss</file>
+    <!-- 会话列表图标。源文件留在仓库根目录，运行时从资源读，不依赖工作目录。 -->
+    <file alias="conversation/111.png">../111.png</file>
+    <file alias="conversation/222.png">../222.png</file>
+  </qresource>
+</RCC>

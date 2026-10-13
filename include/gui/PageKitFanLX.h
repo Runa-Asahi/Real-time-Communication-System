@@ -96,6 +96,8 @@ inline void applyAccent(QWidget *page, const QString &service) {
 inline QPushButton *navButton(const QString &text, QWidget *parent) {
     auto *button = new QPushButton(text, parent);
     button->setProperty("role", QStringLiteral("nav"));
+    // fanlxKind 与 role 同值，供 resources/app.qss 按属性选择。其它页面仍按 role 配色。
+    button->setProperty("fanlxKind", QStringLiteral("nav"));
     button->setCursor(Qt::PointingHandCursor);
     button->setMinimumHeight(42);
     return button;
@@ -105,6 +107,7 @@ inline QPushButton *navButton(const QString &text, QWidget *parent) {
 inline QPushButton *primaryButton(const QString &text, QWidget *parent) {
     auto *button = new QPushButton(text, parent);
     button->setProperty("role", QStringLiteral("primary"));
+    button->setProperty("fanlxKind", QStringLiteral("primary"));
     button->setCursor(Qt::PointingHandCursor);
     button->setMinimumHeight(34);
     return button;
@@ -114,6 +117,7 @@ inline QPushButton *primaryButton(const QString &text, QWidget *parent) {
 inline QPushButton *dangerButton(const QString &text, QWidget *parent) {
     auto *button = new QPushButton(text, parent);
     button->setProperty("role", QStringLiteral("danger"));
+    button->setProperty("fanlxKind", QStringLiteral("danger"));
     button->setCursor(Qt::PointingHandCursor);
     button->setMinimumHeight(34);
     return button;
@@ -131,6 +135,15 @@ inline QLabel *hintLabel(QWidget *parent) {
 inline QFrame *card(QWidget *parent) {
     auto *frame = new QFrame(parent);
     frame->setObjectName(QStringLiteral("cardFanLX"));
+    return frame;
+}
+
+// 白底分区卡片。objectName 固定为 card，由 resources/app.qss 绘制边框。
+// 不改 card()：账号页和好友页仍用带主题色竖条的 cardFanLX。
+inline QFrame *sectionCard(QWidget *parent) {
+    auto *frame = new QFrame(parent);
+    frame->setObjectName(QStringLiteral("card"));
+    frame->setAttribute(Qt::WA_StyledBackground, true);
     return frame;
 }
 
