@@ -7,6 +7,7 @@
 #include "gui/GroupPageFanLX.h"
 #include "gui/HistoryDialogFanLX.h"
 #include "network/MessageCodecFanLX.h"
+#include <QIcon>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QColor>
@@ -107,9 +108,9 @@ QString chatPageStyleFanLX() {
                "QLabel#chatServiceFanLX{font-size:12px;color:%6;}"
                "QLabel#chatServiceFanLX[alertFanLX=\"true\"]{color:#7a4b00;}"
                // 消息区：滚动视口铺底，气泡本身另有圆角样式
-               "QScrollArea#chatMessages{background:%7;border:none;}"
-               "QWidget#chatMessageViewportFanLX{background:%7;border:none;}"
-               "QWidget#chatMessageHostFanLX{background:%7;}"
+               "QScrollArea#chatMessages{background:#EAF0F7;border:none;}"
+               "QWidget#chatMessageViewportFanLX{background:#EAF0F7;border:none;}"
+               "QWidget#chatMessageHostFanLX{background:#EAF0F7;}"
                // 工具条：次要按钮 + 新消息提示
                "QFrame#chatToolbarFanLX{background:%7;border:none;border-bottom:1px solid %3;}"
                "QPushButton[chatRole=\"secondary\"]{background:%2;color:%5;border:1px solid %3;"
@@ -534,8 +535,14 @@ class MessagePaneFanLX : public QWidget {
             const auto border = (item.self || item.failed)
                                     ? QStringLiteral("none")
                                     : QStringLiteral("1px solid %1").arg(chatThemeFanLX::border);
-            row.bubble->setStyleSheet(QStringLiteral("QFrame#chatBubbleFanLX{background:%1;border:%2;border-radius:12px;}")
-                                          .arg(background, border));
+            // 参考 LINE / WhatsApp：自己的气泡用品牌色、白字，靠近发送方的一角收成小圆角，
+            // 形成「尾巴」方向感；对方为白底细边框。
+            const auto corners = item.self
+                                     ? QStringLiteral("border-radius:16px;border-bottom-right-radius:4px;")
+                                     : QStringLiteral("border-radius:16px;border-bottom-left-radius:4px;");
+            row.bubble->setStyleSheet(QStringLiteral("QFrame#chatBubbleFanLX{background:%1;border:%2;%3}")
+                                          .arg(item.self && !item.failed ? chatThemeFanLX::accent : background,
+                                               border, corners));
             if (!item.statusText.isEmpty())
                 row.bubble->setToolTip(item.statusText);
 
@@ -545,7 +552,8 @@ class MessagePaneFanLX : public QWidget {
             row.body->setTextInteractionFlags(Qt::TextSelectableByMouse);
             row.body->setAlignment(Qt::AlignLeft | Qt::AlignTop);
             row.body->setStyleSheet(QStringLiteral("color:%1;font-size:14px;background:transparent;border:none;")
-                                        .arg(chatThemeFanLX::textPrimary));
+                                        .arg(item.self && !item.failed ? QStringLiteral("#FFFFFF")
+                                                                       : chatThemeFanLX::textPrimary));
             // 会话打开、历史返回和发送都发生在主窗口显示之后。这时新建的控件不会跟着父控件自动出现。
             row.root->show();
             if (row.meta)
@@ -677,7 +685,8 @@ MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControll
     : QMainWindow(parent), controllerFanLX(controller), domainFanLX(domain), accountFanLX(account),
       storageBackendFanLX(storageBackend) {
     loadApplicationStyleFanLX();
-    setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — QQ 客户端"));
+    setWindowTitle(theme::appDisplayName + QStringLiteral(" — QQ 客户端"));
+    setWindowIcon(theme::appIcon());
     resize(1180, 760);
     // 逻辑像素。150% / 200% 下窗口仍能落到常见桌面里，具体下限由分栏最小宽度再抬高。
     setMinimumSize(760, 520);
@@ -1330,9 +1339,9 @@ void MainWindowFanLX::refreshHeaderFanLX() {
         // 窗口标题仍带类型标志，便于从任务栏区分当前打开的是群还是好友。
         const auto kind = controllerFanLX->currentConversationKindText();
         const auto title = kind.isEmpty() ? current : QStringLiteral("[%1] %2").arg(kind, current);
-        setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — %1（%2）").arg(title, chatService));
+        setWindowTitle(theme::appDisplayName + QStringLiteral(" — %1（%2）").arg(title, chatService));
     } else {
-        setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — %1 客户端").arg(chatService));
+        setWindowTitle(theme::appDisplayName + QStringLiteral(" — %1 客户端").arg(chatService));
     }
     if (tabsFanLX)
         syncShellFanLX(tabsFanLX->currentIndex());

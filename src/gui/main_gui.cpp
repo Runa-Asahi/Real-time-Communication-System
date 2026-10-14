@@ -2,8 +2,10 @@
 #include "gui/DomainControllerFanLX.h"
 #include "gui/LoginDialogFanLX.h"
 #include "gui/MainWindowFanLX.h"
+#include "gui/AppThemeFanLX.h"
 #include "account/ServiceTypeFanLX.h"
 #include "network/ImClientFanLX.h"
+#include <QIcon>
 #include <QApplication>
 #include <QDir>
 #include <QMessageBox>
@@ -119,8 +121,10 @@ int main(int argc, char **argv) {
     // 必须在任何输出与窗口创建之前：双击启动时先把自己独占的控制台窗口藏掉。
     prepareConsoleFanLX();
     GuardedApplicationFanLX app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("fanlx_gui"));
-    QApplication::setApplicationVersion(QStringLiteral("1.0"));
+    QApplication::setApplicationName(QStringLiteral("Ciallo"));
+    QApplication::setApplicationDisplayName(QStringLiteral("Ciallo"));
+    QApplication::setApplicationVersion(QStringLiteral("1.1"));
+    QApplication::setWindowIcon(fanlxGui::theme::appIcon());
 
     QString host = QStringLiteral("127.0.0.1");
     QString portText = QStringLiteral("9500");

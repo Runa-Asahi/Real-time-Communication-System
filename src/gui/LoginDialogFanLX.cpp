@@ -1,7 +1,9 @@
 #include "gui/LoginDialogFanLX.h"
+#include "gui/AppThemeFanLX.h"
 #include "gui/PageKitFanLX.h"
 #include "gui/RegisterDialogFanLX.h"
 #include "network/ClientDataPathFanLX.h"
+#include <QIcon>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -36,7 +38,8 @@ QPushButton *linkButtonFanLX(const QString &text, QWidget *parent) {
 } // namespace
 
 LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
-    setWindowTitle(QStringLiteral("登录"));
+    setWindowTitle(theme::appDisplayName + QStringLiteral(" — 登录"));
+    setWindowIcon(theme::appIcon());
     // 登录窗宽度固定，高度只跟着内容走。可拉伸粗边框在 150% 缩放下会让 Windows
     // 把客户区撑高约一行，从而触发 setGeometry 警告。细对话框边框没有这块隐形边距。
     setWindowFlag(Qt::MSWindowsFixedSizeDialogHint, true);
@@ -44,15 +47,19 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     setFixedWidth(400);
     setStyleSheet(kit::pageStyle(kLoginAccentFanLX) +
                   QStringLiteral("QDialog{background:#F6F7F9;}"
+                                 "QLabel#loginLogoFanLX{background:transparent;border:none;}"
                                  "QCheckBox{color:#5B6472;}"
-                                 "QLineEdit,QSpinBox,QComboBox{min-height:32px;}"));
+                                 "QLineEdit,QSpinBox,QComboBox{min-height:36px;border-radius:10px;}"
+                                 "QPushButton[role=\"primary\"]{border-radius:10px;min-height:44px;font-size:15px;}"));
 
-    // ---- 顶部：标识 + 标题 ----
-    auto *logo = new QLabel(QStringLiteral("樊"), this);
-    logo->setProperty("role", QStringLiteral("avatar"));
-    logo->setFixedSize(56, 56);
+    // ---- 顶部：Ciallo 图标 + 标题（不再用「樊」字与个人姓名作品牌）----
+    auto *logo = new QLabel(this);
+    logo->setObjectName(QStringLiteral("loginLogoFanLX"));
+    logo->setFixedSize(72, 72);
     logo->setAlignment(Qt::AlignCenter);
-    auto *title = new QLabel(QStringLiteral("樊陆旭模拟即时通讯系统"), this);
+    logo->setPixmap(theme::appIcon().pixmap(72, 72));
+    logo->setScaledContents(false);
+    auto *title = new QLabel(theme::appDisplayName, this);
     title->setProperty("role", QStringLiteral("name"));
     title->setAlignment(Qt::AlignCenter);
     auto *subtitle = new QLabel(QStringLiteral("使用微X号登录，QQ / 微信 / 微博 登录后自动联动"), this);

@@ -39,6 +39,12 @@ void apply(QApplication *app);
 // 20px 线性图标。name：chat / people / group / account。
 QIcon lineIcon(const QString &name);
 
+// Ciallo 品牌图标（资源 :/icons/ciallo.png；失败时退回绘制的气泡）。
+QIcon appIcon();
+
+// 对外展示名（窗口标题、登录页、关于）。
+inline const QString appDisplayName = QStringLiteral("Ciallo");
+
 // 同一个名字始终落到同一种头像底色。聊天列表和好友列表共用，不表示在线。
 inline QString avatarColor(const QString &seed) {
     static const char *colors[] = {"#3B6FD8", "#2F7D6D", "#8A5A2B", "#6B4C9A",
