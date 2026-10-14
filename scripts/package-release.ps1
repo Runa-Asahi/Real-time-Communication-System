@@ -6,7 +6,7 @@ param(
     [string]$OutDir = 'dist/Ciallo',
     [string]$QtBin = '',
     [string]$MinGwBin = '',
-    [string]$Version = '1.1.0'
+    [string]$Version = '1.0.0'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -31,8 +31,9 @@ Copy-Item (Join-Path $build 'fanlx_app.exe') (Join-Path $bin 'fanlx_app.exe') -F
 # 拷贝 Qt / MinGW 运行时到 bin（与 deploy-gui.ps1 同一套规则）
 & (Join-Path $PSScriptRoot 'deploy-gui.ps1') -TargetDir $bin -QtBin $QtBin -MinGwBin $MinGwBin
 
-# 启动器（同机 / 局域网）
-Copy-Item (Join-Path $root 'scripts\release\*') $out -Force
+# 启动器（同机 / 局域网）。只拷贝脚本文件，避免把源码树里试运行生成的 data\ 打进发布包。
+Get-ChildItem -LiteralPath (Join-Path $root 'scripts\release') -File |
+    Copy-Item -Destination $out -Force
 Copy-Item (Join-Path $root 'docs\usage\CIALLO使用说明.md') (Join-Path $out '使用说明.md') -Force
 Copy-Item (Join-Path $root 'resources\icons\ciallo.ico') (Join-Path $out 'Ciallo.ico') -Force -ErrorAction SilentlyContinue
 

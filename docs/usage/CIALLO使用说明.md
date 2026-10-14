@@ -75,7 +75,7 @@ powershell -File scripts/package-release.ps1 -BuildDir build `
   -QtBin "E:/Qt/6.11.1/mingw_64/bin" -MinGwBin "D:/mingw64/bin"
 ```
 
-也可打 tag `v1.1.0` 推送，由 GitHub Actions（`.github/workflows/windows-release.yml`）自动构建并上传 Release。
+也可打 tag `v1.0.0` 推送，由 GitHub Actions（`.github/workflows/windows-release.yml`）自动构建并上传正式 Release。
 
 本仓库网络与文件锁依赖 Winsock / Win32，**不能在 Linux 上直接产出 Windows 可执行文件**；请用上述本机构建或 CI。
 

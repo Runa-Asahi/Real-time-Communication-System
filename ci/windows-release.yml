@@ -84,8 +84,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v1.1.0-ci-{0}', github.run_number) }}
-          name: Ciallo ${{ github.ref_type == 'tag' && github.ref_name || format('v1.1.0-ci-{0}', github.run_number) }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v1.0.0-ci-{0}', github.run_number) }}
+          name: Ciallo ${{ github.ref_type == 'tag' && github.ref_name || format('v1.0.0-ci-{0}', github.run_number) }}
           body: |
             ## Ciallo 发布包（Windows x64）
 
@@ -95,6 +95,6 @@ jobs:
             演示账号：`2026001` / `2026002` / `2026003`，密码均为 `123`。
           files: Ciallo-*-windows-x64.zip
           draft: ${{ github.ref_type != 'tag' }}
-          prerelease: true
+          prerelease: ${{ github.ref_type != 'tag' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Ciallo VERSION 1.1.0 DESCRIPTION "Ciallo 即时通讯（课程设计）" LANGUAGES CXX)
+project(Ciallo VERSION 1.0.0 DESCRIPTION "Ciallo 即时通讯（课程设计）" LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

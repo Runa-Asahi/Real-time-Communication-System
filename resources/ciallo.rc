@@ -2,8 +2,8 @@
 IDI_ICON1 ICON "icons/ciallo.ico"
 
 1 VERSIONINFO
-FILEVERSION 1,1,0,0
-PRODUCTVERSION 1,1,0,0
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
 FILEOS 0x40004
 FILETYPE 0x1
 BEGIN
@@ -13,11 +13,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Runa-Asahi"
       VALUE "FileDescription", "Ciallo Instant Messaging"
-      VALUE "FileVersion", "1.1.0"
+      VALUE "FileVersion", "1.0.0"
       VALUE "InternalName", "Ciallo"
       VALUE "OriginalFilename", "Ciallo.exe"
       VALUE "ProductName", "Ciallo"
-      VALUE "ProductVersion", "1.1.0"
+      VALUE "ProductVersion", "1.0.0"
     END
   END
   BLOCK "VarFileInfo"

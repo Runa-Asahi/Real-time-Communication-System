@@ -10,23 +10,43 @@
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
+function Pause-Exit([int]$code) {
+    Write-Host ''
+    Write-Host '按任意键关闭本窗口...'
+    try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } catch { Start-Sleep -Seconds 3 }
+    exit $code
+}
+
 $root = $PSScriptRoot
 $bin = Join-Path $root 'bin'
 $guiExe = Join-Path $bin 'Ciallo.exe'
 $srvExe = Join-Path $bin 'fanlx_app.exe'
+# 发布包里可执行文件在同级 bin\。源码树里的 scripts\release 没有这份 bin，
+# 此时改用仓库 build\ 下的 fanlx_gui.exe / fanlx_app.exe（部署 Qt 运行库之后即可启动）。
+if (-not (Test-Path -LiteralPath $guiExe)) {
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $root)
+    $devGui = Join-Path $repoRoot 'build\fanlx_gui.exe'
+    $devSrv = Join-Path $repoRoot 'build\fanlx_app.exe'
+    $inRepo = Test-Path -LiteralPath (Join-Path $repoRoot 'CMakeLists.txt')
+    if ($inRepo -and (Test-Path -LiteralPath $devGui) -and (Test-Path -LiteralPath $devSrv)) {
+        $guiExe = $devGui
+        $srvExe = $devSrv
+        Write-Host '[信息] 当前是源码目录，使用 build\fanlx_gui.exe 与 build\fanlx_app.exe。'
+    } elseif ($inRepo) {
+        Write-Host '[错误] 找不到发布包里的 bin\Ciallo.exe，也找不到 build\fanlx_gui.exe / build\fanlx_app.exe。'
+        Write-Host '        请先在仓库根目录构建并部署 Qt 运行库：'
+        Write-Host '            cmake -S . -B build -G "MinGW Makefiles" -DFANLX_BUILD_GUI=ON -DFANLX_BUILD_CLI=ON -DCMAKE_PREFIX_PATH="E:/Qt/6.11.1/mingw_64"'
+        Write-Host '            cmake --build build --target fanlx_gui --target fanlx_app --parallel 4'
+        Write-Host '            powershell -File scripts/deploy-gui.ps1 -TargetDir build -QtBin "E:/Qt/6.11.1/mingw_64/bin" -MinGwBin "D:/mingw64/bin"'
+        Pause-Exit 1
+    }
+}
 $serverData = Join-Path $root 'data\server'
 $clientData = Join-Path $root 'data\client'
 $logDir = Join-Path $root 'data\logs'
 $savedHost = Join-Path $root 'data\server-host.txt'
 foreach ($d in @($serverData, $clientData, $logDir)) {
     if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
-}
-
-function Pause-Exit([int]$code) {
-    Write-Host ''
-    Write-Host '按任意键关闭本窗口...'
-    try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } catch { Start-Sleep -Seconds 3 }
-    exit $code
 }
 
 function Test-Port([string]$h, [int]$p) {

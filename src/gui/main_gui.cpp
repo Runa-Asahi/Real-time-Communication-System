@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     GuardedApplicationFanLX app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Ciallo"));
     QApplication::setApplicationDisplayName(QStringLiteral("Ciallo"));
-    QApplication::setApplicationVersion(QStringLiteral("1.1"));
+    QApplication::setApplicationVersion(QStringLiteral("1.0"));
     QApplication::setWindowIcon(fanlxGui::theme::appIcon());
 
     QString host = QStringLiteral("127.0.0.1");
