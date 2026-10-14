@@ -139,7 +139,12 @@ nlohmann::json scenarioFanLX(const std::filesystem::path &directory, bool enable
         assert(SnapshotCodecFanLX::encode(app.snapshot()) == expected);
         assert(!app.state().accounts.isAccountLoggedIn(owner.service, owner.accountId));
         assert(app.queryCacheMetrics().entries == 0);
-        result.push_back(expected);
+        // 口令以每用户随机盐哈希存储，两次独立运行的哈希记录必然不同；
+        // 比较两种缓存模式的结果时只比较其余字段（同一次运行内的落盘/重载一致性已在上面逐字节断言）。
+        auto comparable = expected;
+        for (auto &u : comparable["users"])
+            u["password"] = "<hashed>";
+        result.push_back(comparable);
         app.saveAndClose();
     }
     return result;

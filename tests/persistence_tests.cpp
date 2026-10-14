@@ -69,7 +69,10 @@ void initializeFanLX(const std::filesystem::path &dir) {
 } // namespace
 int wmain(int argc, wchar_t **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#if defined(_MSC_VER) || defined(_UCRT)
+    // 旧 msvcrt 版 MinGW（如 CI 的 mingw1310）不导出该函数，只在 UCRT/MSVC 下调用。
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
     // 辅助进程只访问父测试传入的专用临时目录；故障退出不运行析构。
     if (argc >= 3) {
         const std::filesystem::path dir = std::filesystem::path(argv[2]);
