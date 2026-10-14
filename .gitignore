@@ -24,6 +24,8 @@ compile_commands.json
 /data/*.json
 /data/*.json.prev
 /data/*.lock
+# 在源码树里直接双击 scripts/release/Ciallo.bat 时，数据写在启动器旁边。
+/scripts/release/data/
 
 # ---- 客户端 GUI 默认数据根（2026-10-10 从 build/ 移出）----
 # 此前它位于 build/data-im-gui，仅靠上面的 /build/ 才被忽略。但 /build/ 的语义是

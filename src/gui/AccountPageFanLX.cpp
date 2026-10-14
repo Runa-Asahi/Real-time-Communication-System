@@ -55,7 +55,7 @@ QStringList identityNamesFanLX(DomainControllerFanLX *controller) {
 QString accountHomeStyleFanLX() {
     return QStringLiteral(
         "QWidget#accountHomeFanLX{background:#F6F7F9;}"
-        "QLabel#accountPageTitleFanLX{font-size:20px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#accountPageTitleFanLX{font-size:22px;font-weight:700;color:#1F2329;background:transparent;letter-spacing:0.2px;}"
         "QFrame#accountIdentityFanLX{background:#FFFFFF;border:1px solid #E6E8EE;border-radius:8px;}"
         "QLabel#accountIdentityTextFanLX{font-size:15px;font-weight:600;color:#1F2329;background:transparent;}"
         "QLabel#accountIdentityHintFanLX{font-size:12px;color:#5B6472;background:transparent;}"
@@ -95,7 +95,7 @@ QString accountHomeStyleFanLX() {
         "QPushButton[role=\"accountEntry\"]:pressed{background:#E8EFFD;}"
         "QPushButton[role=\"accountEntry\"]:focus{background:#E8EFFD;}"
         "QLabel#accountEntryTitleFanLX{font-size:15px;font-weight:600;color:#1F2329;background:transparent;}"
-        "QLabel#accountEntryDetailFanLX{font-size:12px;color:#5B6472;background:transparent;}"
+        "QLabel#accountEntryDetailFanLX{font-size:12px;color:#8A94A3;background:transparent;line-height:1.35;}"
         "QLabel#accountEntryArrowFanLX{font-size:18px;color:#8A94A3;background:transparent;}");
 }
 
@@ -105,13 +105,13 @@ QPushButton *accountEntryButtonFanLX(const QString &title, const QString &detail
     button->setProperty("role", QStringLiteral("accountEntry"));
     button->setCursor(Qt::PointingHandCursor);
     button->setFocusPolicy(Qt::StrongFocus);
-    button->setMinimumHeight(76);
+    button->setMinimumHeight(64);
     button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *row = new QHBoxLayout(button);
-    row->setContentsMargins(16, 14, 14, 14);
+    row->setContentsMargins(16, 12, 14, 12);
     row->setSpacing(12);
     auto *textColumn = new QVBoxLayout();
-    textColumn->setSpacing(4);
+    textColumn->setSpacing(2);
     auto *titleLabel = new QLabel(title, button);
     titleLabel->setObjectName(QStringLiteral("accountEntryTitleFanLX"));
     auto *detailLabel = new QLabel(detail, button);
@@ -442,15 +442,17 @@ QString accountManageStyleFanLX() {
         "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:hover{background:#FEE2E2;}"
         "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:pressed{background:#FEE2E2;}"
         "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:disabled{color:#FECACA;background:transparent;}"
-        "QListWidget#bindingListFanLX{background:transparent;border:none;outline:none;}"
-        "QListWidget#bindingListFanLX::item{background:transparent;border:none;padding:0px;}"
+        "QListWidget#bindingListFanLX{background:transparent;border:none;outline:none;padding:0px;}"
+        "QListWidget#bindingListFanLX::item{background:transparent;border:none;padding:0px 0px 10px 0px;}"
         "QListWidget#bindingListFanLX::item:selected{background:transparent;color:#1F2329;}"
-        "QWidget#bindingRowFanLX{background:transparent;border:none;border-bottom:1px solid #E6E8EE;"
-        "border-radius:0px;}"
-        "QLabel#bindingServiceFanLX{font-size:12px;color:#8A94A3;background:transparent;}"
+        "QWidget#bindingRowFanLX{background:#F8FAFC;border:1px solid #E6E8EE;border-radius:12px;}"
+        "QWidget#bindingSideFanLX{background:#FFFFFF;border:1px solid #E6E8EE;border-radius:10px;}"
+        "QLabel#bindingServiceFanLX{font-size:11px;font-weight:600;color:#8A94A3;letter-spacing:0.4px;"
+        "background:transparent;}"
         "QLabel#bindingAccountFanLX{font-size:14px;font-weight:600;color:#1F2329;background:transparent;}"
-        "QLabel#bindingMarkFanLX{font-size:12px;font-weight:600;color:#2563EB;background:#E8EFFD;"
-        "border-radius:10px;padding:2px 8px;}"
+        "QLabel#bindingIdFanLX{font-size:12px;color:#5B6472;background:transparent;}"
+        "QLabel#bindingMarkFanLX{font-size:11px;font-weight:600;color:#2563EB;background:#E8EFFD;"
+        "border:1px solid #D6E4FF;border-radius:12px;padding:5px 12px;}"
         "QLabel#bindingEmptyFanLX{font-size:13px;color:#8A94A3;background:transparent;}");
 }
 
@@ -526,8 +528,8 @@ void installAccountHeaderFanLX(QStackedWidget *stack, int index, const QString &
         layout->insertWidget(0, header);
 }
 
-constexpr int bindingRowHeightFanLX = 72;
-constexpr int bindingListCapRowsFanLX = 8;
+constexpr int bindingRowHeightFanLX = 96;
+constexpr int bindingListCapRowsFanLX = 6;
 
 QFrame *manageCardFanLX(QWidget *parent) {
     auto *card = new QFrame(parent);
@@ -573,11 +575,11 @@ class AccountManagePageFanLX : public QWidget {
         column_ = new QWidget(this);
         // 最小宽度保持 0，滚动区域才能在窄窗口里把页面缩小；超过 1240 后两侧空白把内容留在中间。
         column_->setMinimumWidth(0);
-        column_->setMaximumWidth(1240);
+        column_->setMaximumWidth(1040);
         column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
         columnLayout_ = new QVBoxLayout(column_);
         columnLayout_->setContentsMargins(0, 0, 0, 0);
-        columnLayout_->setSpacing(16);
+        columnLayout_->setSpacing(14);
         center->addStretch(0);
         center->addWidget(column_, 1, Qt::AlignTop);
         center->addStretch(0);
@@ -676,16 +678,21 @@ void fitBindingListFanLX(QListWidget *list) {
     }
 }
 
-QWidget *bindingSideFanLX(const QString &caption, const QString &value, QWidget *parent) {
+// 一侧账号：上排服务名徽章，下排号码；外层白卡片，避免「服务账号（号码）」挤在一行。
+QWidget *bindingSideFanLX(const QString &service, const QString &accountId, const QString &role,
+                          QWidget *parent) {
     auto *box = new QWidget(parent);
+    box->setObjectName(QStringLiteral("bindingSideFanLX"));
+    box->setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QVBoxLayout(box);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(2);
-    auto *cap = new QLabel(caption, box);
+    layout->setContentsMargins(12, 10, 12, 10);
+    layout->setSpacing(4);
+    auto *cap = new QLabel(role + QStringLiteral(" · ") + service, box);
     cap->setObjectName(QStringLiteral("bindingServiceFanLX"));
-    auto *text = new QLabel(value, box);
+    auto *text = new QLabel(accountId, box);
     text->setObjectName(QStringLiteral("bindingAccountFanLX"));
     text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    text->setWordWrap(true);
     layout->addWidget(cap);
     layout->addWidget(text);
     return box;
@@ -696,8 +703,8 @@ QWidget *bindingPairRowFanLX(const QString &text, QWidget *parent) {
     row->setObjectName(QStringLiteral("bindingRowFanLX"));
     row->setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QHBoxLayout(row);
-    layout->setContentsMargins(12, 8, 12, 8);
-    layout->setSpacing(12);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(10);
     static const QRegularExpression pattern(
         QStringLiteral("^(.+?)（([^）]+)） <--> (.+?)（([^）]+)）$"));
     const auto match = pattern.match(text);
@@ -708,16 +715,19 @@ QWidget *bindingPairRowFanLX(const QString &text, QWidget *parent) {
         layout->addWidget(plain);
         return row;
     }
-    layout->addWidget(bindingSideFanLX(QStringLiteral("服务账号"),
-                                       QStringLiteral("%1（%2）").arg(match.captured(1), match.captured(2)), row),
+    // 左：服务账号号码 + 服务名；中：圆角「已绑定」芯片；右：关联账号。
+    // DomainController 格式：服务名（号码） <--> 对端服务名（对端号码）
+    layout->addWidget(bindingSideFanLX(match.captured(1), match.captured(2),
+                                       QStringLiteral("服务账号"), row),
                       1);
-    auto *mark = new QLabel(QStringLiteral("已绑定"), row);
+    auto *mark = new QLabel(QStringLiteral("↔ 已绑定"), row);
     mark->setObjectName(QStringLiteral("bindingMarkFanLX"));
     mark->setAlignment(Qt::AlignCenter);
     mark->setAttribute(Qt::WA_StyledBackground, true);
+    mark->setMinimumWidth(72);
     layout->addWidget(mark, 0, Qt::AlignVCenter);
-    layout->addWidget(bindingSideFanLX(QStringLiteral("关联账号"),
-                                       QStringLiteral("%1（%2）").arg(match.captured(3), match.captured(4)), row),
+    layout->addWidget(bindingSideFanLX(match.captured(3), match.captured(4),
+                                       QStringLiteral("关联账号"), row),
                       1);
     return row;
 }
@@ -727,11 +737,18 @@ QWidget *bindingEmptyRowFanLX(QWidget *parent) {
     row->setObjectName(QStringLiteral("bindingRowFanLX"));
     row->setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QVBoxLayout(row);
-    layout->setContentsMargins(12, 8, 12, 8);
-    auto *label = new QLabel(QStringLiteral("还没有绑定关系。建立后会显示在这里。"), row);
-    label->setObjectName(QStringLiteral("bindingEmptyFanLX"));
-    label->setWordWrap(true);
+    layout->setContentsMargins(16, 18, 16, 18);
+    layout->setSpacing(6);
+    auto *label = new QLabel(QStringLiteral("还没有绑定关系"), row);
+    label->setObjectName(QStringLiteral("bindingAccountFanLX"));
+    label->setAlignment(Qt::AlignCenter);
+    auto *hint = new QLabel(QStringLiteral("在下方选择两个已开通服务并点「绑定」后，关系会显示在这里。"),
+                            row);
+    hint->setObjectName(QStringLiteral("bindingEmptyFanLX"));
+    hint->setWordWrap(true);
+    hint->setAlignment(Qt::AlignCenter);
     layout->addWidget(label);
+    layout->addWidget(hint);
     return row;
 }
 
@@ -800,7 +817,7 @@ AccountPageFanLX::AccountPageFanLX(DomainControllerFanLX *controller, QWidget *p
 QWidget *AccountPageFanLX::buildHomeFanLX() {
     auto *home = new AccountHomeFanLX();
     auto *outer = new QVBoxLayout(home);
-    outer->setContentsMargins(16, 16, 16, 16);
+    outer->setContentsMargins(12, 12, 12, 12);
     outer->setSpacing(0);
 
     auto *column = new QWidget(home);
@@ -812,6 +829,10 @@ QWidget *AccountPageFanLX::buildHomeFanLX() {
     auto *title = new QLabel(QStringLiteral("账号与服务"), column);
     title->setObjectName(QStringLiteral("accountPageTitleFanLX"));
     columnLayout->addWidget(title);
+    auto *pageSubtitle = new QLabel(
+        QStringLiteral("查看身份与资料，管理开通、登录、绑定和密码"), column);
+    pageSubtitle->setObjectName(QStringLiteral("accountIdentityHintFanLX"));
+    columnLayout->addWidget(pageSubtitle);
 
     // 当前身份栏：服务名、账号与切换下拉框放在同一条里。选中即切换。
     // 切换被拒（比如该服务还没登录）时，下拉框必须回到真正的当前服务，并弹出原因。
@@ -913,8 +934,8 @@ QWidget *AccountPageFanLX::buildProfileCardFanLX(QWidget *parent) {
     auto *frame = new QFrame(parent);
     frame->setObjectName(QStringLiteral("accountProfileFanLX"));
     auto *layout = new QVBoxLayout(frame);
-    layout->setContentsMargins(20, 18, 20, 18);
-    layout->setSpacing(16);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(14);
 
     auto *heading = new QLabel(QStringLiteral("用户基本信息"), frame);
     heading->setObjectName(QStringLiteral("accountProfileHeadingFanLX"));
@@ -1107,7 +1128,7 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
 
     auto *confirmCard = manageCardFanLX(host);
     auto *confirmLayout = new QVBoxLayout(confirmCard);
-    confirmLayout->setContentsMargins(20, 18, 20, 18);
+    confirmLayout->setContentsMargins(16, 16, 16, 16);
     confirmLayout->setSpacing(8);
     confirmLayout->addWidget(manageTitleFanLX(QStringLiteral("登录服务"), confirmCard));
     confirmLayout->addWidget(manageHintFanLX(QStringLiteral("选择服务后，确认该服务的登录身份。"), confirmCard));
@@ -1123,7 +1144,7 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
 
     auto *linkCard = manageCardFanLX(host);
     auto *linkLayout = new QVBoxLayout(linkCard);
-    linkLayout->setContentsMargins(20, 18, 20, 18);
+    linkLayout->setContentsMargins(16, 16, 16, 16);
     linkLayout->setSpacing(8);
     linkLayout->addWidget(manageTitleFanLX(QStringLiteral("一键联动登录"), linkCard));
     linkLayout->addWidget(manageHintFanLX(
@@ -1141,7 +1162,7 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
 
     auto *logoutCard = manageCardFanLX(host);
     auto *logoutLayout = new QVBoxLayout(logoutCard);
-    logoutLayout->setContentsMargins(20, 18, 20, 18);
+    logoutLayout->setContentsMargins(16, 16, 16, 16);
     logoutLayout->setSpacing(8);
     logoutLayout->addWidget(manageTitleFanLX(QStringLiteral("注销"), logoutCard));
     logoutLayout->addWidget(manageHintFanLX(
@@ -1179,9 +1200,12 @@ QWidget *AccountPageFanLX::buildBindingBodyFanLX() {
 
     auto *listCard = manageCardFanLX(host);
     auto *listLayout = new QVBoxLayout(listCard);
-    listLayout->setContentsMargins(20, 18, 20, 16);
-    listLayout->setSpacing(8);
+    listLayout->setContentsMargins(16, 16, 16, 14);
+    listLayout->setSpacing(10);
     listLayout->addWidget(manageTitleFanLX(QStringLiteral("已绑定关系"), listCard));
+    listLayout->addWidget(manageHintFanLX(
+        QStringLiteral("当前微X身份下各服务账号之间已建立的绑定。"),
+        listCard));
     listLayout->addWidget(manageHintFanLX(QStringLiteral("本人各服务号码之间已经建立的对应关系。"), listCard));
     bindingListFanLX = new QListWidget(listCard);
     bindingListFanLX->setObjectName(QStringLiteral("bindingListFanLX"));
@@ -1247,7 +1271,7 @@ QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
     // 单项修改：两个字段各有自己的保存按钮，改一个不会动另一个。
     auto *profileCard = manageCardFanLX(host);
     auto *profileLayout = new QVBoxLayout(profileCard);
-    profileLayout->setContentsMargins(20, 18, 20, 18);
+    profileLayout->setContentsMargins(16, 16, 16, 16);
     profileLayout->setSpacing(8);
     profileLayout->addWidget(manageTitleFanLX(QStringLiteral("个人资料"), profileCard));
     profileLayout->addWidget(
@@ -1272,7 +1296,7 @@ QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
 
     auto *passwordCard = manageCardFanLX(host);
     auto *passwordLayout = new QVBoxLayout(passwordCard);
-    passwordLayout->setContentsMargins(20, 18, 20, 18);
+    passwordLayout->setContentsMargins(16, 16, 16, 16);
     passwordLayout->setSpacing(8);
     passwordLayout->addWidget(manageTitleFanLX(QStringLiteral("修改密码"), passwordCard));
     passwordLayout->addWidget(

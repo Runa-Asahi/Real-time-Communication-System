@@ -1,0 +1,27 @@
+// Windows 资源：可执行文件图标与版本信息（Ciallo）
+IDI_ICON1 ICON "icons/ciallo.ico"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404B0"
+    BEGIN
+      VALUE "CompanyName", "Runa-Asahi"
+      VALUE "FileDescription", "Ciallo Instant Messaging"
+      VALUE "FileVersion", "1.0.0"
+      VALUE "InternalName", "Ciallo"
+      VALUE "OriginalFilename", "Ciallo.exe"
+      VALUE "ProductName", "Ciallo"
+      VALUE "ProductVersion", "1.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0804, 1200
+  END
+END

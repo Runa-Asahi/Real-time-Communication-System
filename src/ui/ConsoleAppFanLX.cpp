@@ -486,7 +486,7 @@ void ConsoleAppFanLX::chatFanLX() {
     }
 }
 int ConsoleAppFanLX::run() {
-    outFanLX << "樊陆旭模拟即时通讯系统\n输入 0 返回；输入结束时执行保存检查。\n";
+    outFanLX << "Ciallo 即时通讯系统\n输入 0 返回；输入结束时执行保存检查。\n";
     if (appFanLX.loadResult().status != LoadStatusFanLX::Loaded) {
         try {
             auto status = appFanLX.loadResult().status;

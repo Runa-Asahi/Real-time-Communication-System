@@ -78,4 +78,25 @@ QString shortStatus(const QString &status, bool failed) {
     return status;
 }
 
+
+QIcon appIcon() {
+    QIcon icon(QStringLiteral(":/icons/ciallo.png"));
+    if (!icon.isNull() && !icon.availableSizes().isEmpty())
+        return icon;
+    // 资源未嵌入时现场画一枚气泡，保证登录页仍有图标。
+    QPixmap pix(128, 128);
+    pix.fill(Qt::transparent);
+    QPainter painter(&pix);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setBrush(QColor(brand));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(QRectF(8, 8, 112, 112), 28, 28);
+    painter.setBrush(QColor(QStringLiteral("#FFFFFF")));
+    QPainterPath bubble;
+    bubble.addRoundedRect(QRectF(28, 34, 72, 48), 14, 14);
+    painter.drawPath(bubble);
+    painter.drawEllipse(QRectF(58, 90, 12, 12));
+    return QIcon(pix);
+}
+
 } // namespace fanlxGui::theme
