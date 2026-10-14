@@ -4,13 +4,14 @@
 #include <QMainWindow>
 #include <QString>
 
+class QAbstractButton;
 class QLabel;
 class QLineEdit;
 class QListView;
 class QPushButton;
+class QScrollArea;
 class QSplitter;
 class QTabWidget;
-class QTextBrowser;
 class QTimer;
 
 namespace fanlxGui {
@@ -21,7 +22,7 @@ class FriendPageFanLX;
 class GroupPageFanLX;
 class HistoryDialogFanLX;
 
-// 主窗口：把课设要求的全部功能都放进一个窗口的四个页签里，避免"有些功能没显示出来"。
+// 主窗口：左侧导航切换四个业务页。QTabWidget 仍在，页签文字不变，只是隐藏了横向页签条。
 //
 //   页签 1 聊天      左联系人/群/最近会话（好友/群图标 + 名称）+ 未读数，中间消息列表，底部编辑器
 //   页签 2 账号与服务 用户基本信息、开通管理（微X 之下开通 QQ/微信/微博）、登录管理、绑定、资料维护
@@ -77,6 +78,8 @@ class MainWindowFanLX : public QMainWindow {
     void buildChatPageFanLX();
     void buildDomainPagesFanLX();
     void buildMenusFanLX();
+    void buildShellFanLX();
+    void syncShellFanLX(int index);
     void renderMessagesFanLX();
     void showHistoryResultsFanLX();
     void showAboutFanLX();
@@ -88,8 +91,14 @@ class MainWindowFanLX : public QMainWindow {
     ConversationListModelFanLX *conversationsFanLX = nullptr;
     MessageListModelFanLX *messagesFanLX = nullptr;
     QTabWidget *tabsFanLX = nullptr;
+    QList<QAbstractButton *> navButtonsFanLX;
+    QLabel *moduleTitleFanLX = nullptr;
+    QLabel *identityLabelFanLX = nullptr;
+    QLabel *friendNavBadgeFanLX = nullptr;
+    QLabel *emptyConversationsFanLX = nullptr;
     QListView *conversationViewFanLX = nullptr;
-    QTextBrowser *messageViewFanLX = nullptr;
+    // 消息区是可滚动的圆角气泡。正文用纯文本，避免把用户内容当 HTML。
+    QScrollArea *messageViewFanLX = nullptr;
     QLineEdit *editorFanLX = nullptr;
     QLabel *editorHintFanLX = nullptr;
     QPushButton *sendButtonFanLX = nullptr;

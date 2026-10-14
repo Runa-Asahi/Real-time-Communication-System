@@ -3,7 +3,7 @@
    层次只靠底色和边框，不用 box-shadow，也不用 QGraphicsEffect。 */
 
 QWidget#groupPageFanLX {
-    background: #f5f6f8;
+    background: #F6F7F9;
     color: #1f2328;
     font-size: 13px;
     font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
@@ -11,7 +11,7 @@ QWidget#groupPageFanLX {
 
 QScrollArea#groupScrollFanLX,
 QWidget#groupViewportFanLX {
-    background: #f5f6f8;
+    background: #F6F7F9;
     border: none;
 }
 
@@ -86,7 +86,7 @@ QWidget#groupPageFanLX QLineEdit {
     padding: 5px 10px;
     font-size: 13px;
     min-height: 20px;
-    selection-background-color: #e3eeff;
+    selection-background-color: #E8EFFD;
     selection-color: #1f2328;
 }
 
@@ -96,11 +96,11 @@ QWidget#groupPageFanLX QLineEdit[fanlxKind="mono"] {
 }
 
 QWidget#groupPageFanLX QLineEdit:focus {
-    border: 1px solid #2f81f7;
+    border: 1px solid #2563EB;
 }
 
 QWidget#groupPageFanLX QLineEdit:disabled {
-    background: #f5f6f8;
+    background: #F6F7F9;
     color: #a8abb2;
 }
 
@@ -124,15 +124,15 @@ QWidget#groupPageFanLX QListWidget::item {
 
 QWidget#groupPageFanLX QListView::item:hover,
 QWidget#groupPageFanLX QListWidget::item:hover {
-    background: #f0f7ff;
+    background: #E8EFFD;
 }
 
 QWidget#groupPageFanLX QListView::item:selected,
 QWidget#groupPageFanLX QListWidget::item:selected,
 QWidget#groupPageFanLX QListView::item:selected:hover,
 QWidget#groupPageFanLX QListWidget::item:selected:hover {
-    background: #e3eeff;
-    border-left: 3px solid #2f81f7;
+    background: #E8EFFD;
+    border-left: 3px solid #2563EB;
     color: #1f2328;
 }
 
@@ -144,12 +144,12 @@ QWidget#groupPageFanLX QPlainTextEdit {
     padding: 8px 10px;
     font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
     font-size: 13px;
-    selection-background-color: #e3eeff;
+    selection-background-color: #E8EFFD;
     selection-color: #1f2328;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="primary"] {
-    background: #2f81f7;
+    background: #2563EB;
     color: #ffffff;
     border: none;
     border-radius: 6px;
@@ -161,11 +161,11 @@ QWidget#groupPageFanLX QPushButton[fanlxKind="primary"] {
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:hover {
-    background: #2569d8;
+    background: #1D4ED8;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:pressed {
-    background: #1c53b0;
+    background: #1E40AF;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:disabled {
@@ -211,24 +211,24 @@ QWidget#groupPageFanLX QPushButton[fanlxKind="nav"] {
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:hover {
-    border-color: #2f81f7;
-    color: #2f81f7;
+    border-color: #2563EB;
+    color: #2563EB;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:pressed {
-    background: #f0f7ff;
-    border-color: #2f81f7;
-    color: #2f81f7;
+    background: #E8EFFD;
+    border-color: #2563EB;
+    color: #2563EB;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:disabled {
     color: #a8abb2;
-    background: #f5f6f8;
+    background: #F6F7F9;
     border-color: #e4e7ed;
 }
 
 QWidget#groupPageFanLX QPushButton[role="back"] {
-    color: #2f81f7;
+    color: #2563EB;
     background: transparent;
     border: none;
     border-radius: 6px;
@@ -241,7 +241,7 @@ QWidget#groupPageFanLX QPushButton[role="back"] {
 }
 
 QWidget#groupPageFanLX QPushButton[role="back"]:hover {
-    background: #f0f7ff;
+    background: #E8EFFD;
 }
 
 QWidget#groupPageFanLX QScrollBar:vertical {

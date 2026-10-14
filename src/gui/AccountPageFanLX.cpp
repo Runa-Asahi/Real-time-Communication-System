@@ -50,42 +50,53 @@ QStringList identityNamesFanLX(DomainControllerFanLX *controller) {
     return names;
 }
 
-// 只作用于账号首页。选择器都挂在首页自己的 objectName / role 上，
-// 不改 PageKit 的 nav 角色，因此好友页、群页和本页的四个子页面保持原样。
+// 只作用于账号首页。颜色用 AppThemeFanLX 的同一套色值。
+// 不改 PageKit 的 nav 角色，因此好友页和群页保持原样。
 QString accountHomeStyleFanLX() {
     return QStringLiteral(
-        "QWidget#accountHomeFanLX{background:#f3f5f8;}"
-        "QLabel#accountPageTitleFanLX{font-size:20px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#accountPageIntroFanLX{font-size:13px;color:#5b6472;background:transparent;}"
-        "QFrame#accountIdentityFanLX{background:#ffffff;border:1px solid #e3e7ed;border-radius:12px;}"
-        "QLabel#accountIdentityTextFanLX{font-size:15px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#accountIdentityHintFanLX{font-size:12px;color:#5b6472;background:transparent;}"
-        "QFrame#accountIdentityFanLX QComboBox{background:#ffffff;color:#1f2329;border:1px solid #d5dbe3;"
-        "border-radius:8px;padding:4px 10px;min-height:28px;}"
-        "QFrame#accountIdentityFanLX QComboBox:hover{border-color:#c3cad3;}"
-        "QFrame#accountIdentityFanLX QComboBox:focus{border-color:#2f6fed;}"
+        "QWidget#accountHomeFanLX{background:#F6F7F9;}"
+        "QLabel#accountPageTitleFanLX{font-size:20px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QFrame#accountIdentityFanLX{background:#FFFFFF;border:1px solid #E6E8EE;border-radius:8px;}"
+        "QLabel#accountIdentityTextFanLX{font-size:15px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#accountIdentityHintFanLX{font-size:12px;color:#5B6472;background:transparent;}"
+        "QFrame#accountIdentityFanLX QComboBox{background:#FFFFFF;color:#1F2329;border:1px solid #E6E8EE;"
+        "border-radius:8px;padding:0px 10px;min-height:36px;}"
+        "QFrame#accountIdentityFanLX QComboBox:hover{border-color:#D7DEE8;}"
+        "QFrame#accountIdentityFanLX QComboBox:focus{border-color:#2563EB;}"
         "QFrame#accountIdentityFanLX QComboBox::drop-down{border:none;width:22px;}"
-        "QFrame#accountIdentityFanLX QComboBox QAbstractItemView{background:#ffffff;color:#1f2329;"
-        "selection-background-color:#eaf1fe;selection-color:#1f2329;border:1px solid #e3e7ed;}"
-        "QFrame#accountProfileFanLX{background:#ffffff;border:1px solid #e3e7ed;border-radius:12px;}"
-        "QLabel#accountProfileHeadingFanLX{font-size:13px;font-weight:600;color:#5b6472;background:transparent;}"
-        "QFrame#accountProfileFanLX QLabel[role=\"name\"]{font-size:18px;font-weight:600;color:#1f2329;"
+        "QFrame#accountIdentityFanLX QComboBox QAbstractItemView{background:#FFFFFF;color:#1F2329;"
+        "selection-background-color:#E8EFFD;selection-color:#1F2329;border:1px solid #E6E8EE;}"
+        "QFrame#accountProfileFanLX{background:#FFFFFF;border:1px solid #E6E8EE;border-radius:8px;}"
+        "QLabel#accountProfileHeadingFanLX{font-size:13px;font-weight:600;color:#5B6472;background:transparent;}"
+        "QFrame#accountProfileFanLX QLabel[role=\"name\"]{font-size:18px;font-weight:600;color:#1F2329;"
         "background:transparent;}"
-        "QFrame#accountProfileFanLX QLabel[role=\"caption\"]{font-size:12px;color:#8a94a3;background:transparent;}"
-        "QFrame#accountProfileFanLX QLabel[role=\"value\"]{font-size:14px;color:#1f2329;background:transparent;}"
-        "QFrame#accountProfileFanLX QLabel[role=\"avatar\"]{border-radius:24px;font-size:20px;}"
-        "QFrame#accountStatFanLX{background:#f7f9fb;border:1px solid #e8ecf1;border-radius:10px;}"
-        "QLabel#accountStatValueFanLX{font-size:18px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#accountStatCaptionFanLX{font-size:12px;color:#8a94a3;background:transparent;}"
-        "QPushButton[role=\"accountEntry\"]{background:#ffffff;color:#1f2329;border:1px solid #e3e7ed;"
-        "border-radius:12px;padding:0;text-align:left;}"
-        "QPushButton[role=\"accountEntry\"]:hover{background:#f4f7fb;border-color:#d3dae3;}"
-        "QPushButton[role=\"accountEntry\"]:pressed{background:#eef2f7;}"
-        "QPushButton[role=\"accountEntry\"]:focus{border-color:#2f6fed;}"
-        "QPushButton[role=\"accountEntry\"]:hover:focus{background:#f4f7fb;border-color:#2f6fed;}"
-        "QLabel#accountEntryTitleFanLX{font-size:15px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#accountEntryDetailFanLX{font-size:12px;color:#5b6472;background:transparent;}"
-        "QLabel#accountEntryArrowFanLX{font-size:18px;color:#8a94a3;background:transparent;}");
+        "QFrame#accountProfileFanLX QLabel[role=\"caption\"]{font-size:12px;color:#8A94A3;background:transparent;}"
+        "QFrame#accountProfileFanLX QLabel[role=\"value\"]{font-size:14px;color:#1F2329;background:transparent;}"
+        "QLabel#accountStatValueFanLX{font-size:18px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#accountStatCaptionFanLX{font-size:12px;color:#8A94A3;background:transparent;}"
+        "QFrame#accountHairlineFanLX{background:#E6E8EE;border:none;max-height:1px;}"
+        "QWidget#accountHomeFanLX QFrame#bannerFanLX{background:#FFF4E5;border:1px solid #F3D7B0;"
+        "border-radius:8px;}"
+        "QWidget#accountHomeFanLX QFrame#bannerFanLX QLabel{color:#B45309;background:transparent;}"
+        "QWidget#accountHomeFanLX QPushButton[role=\"primary\"]{background:#2563EB;color:#FFFFFF;"
+        "border:none;border-radius:8px;padding:0px 16px;min-height:36px;font-size:14px;font-weight:600;}"
+        "QWidget#accountHomeFanLX QPushButton[role=\"primary\"]:hover{background:#1D4ED8;}"
+        "QWidget#accountHomeFanLX QPushButton[role=\"primary\"]:pressed{background:#1E40AF;}"
+        "QWidget#accountHomeFanLX QPushButton[role=\"primary\"]:disabled{background:#E6E8EE;color:#8A94A3;}"
+        "QFrame#accountEntriesFanLX{background:#FFFFFF;border:1px solid #E6E8EE;border-radius:8px;}"
+        "QPushButton[role=\"accountEntry\"]{background:transparent;color:#1F2329;border:none;"
+        "border-radius:0px;padding:0px;text-align:left;}"
+        "QPushButton[role=\"accountEntry\"][lined=\"true\"]{border-bottom:1px solid #E6E8EE;}"
+        "QPushButton[role=\"accountEntry\"][edge=\"first\"]{border-top-left-radius:8px;"
+        "border-top-right-radius:8px;}"
+        "QPushButton[role=\"accountEntry\"][edge=\"last\"]{border-bottom-left-radius:8px;"
+        "border-bottom-right-radius:8px;}"
+        "QPushButton[role=\"accountEntry\"]:hover{background:#F3F5F8;}"
+        "QPushButton[role=\"accountEntry\"]:pressed{background:#E8EFFD;}"
+        "QPushButton[role=\"accountEntry\"]:focus{background:#E8EFFD;}"
+        "QLabel#accountEntryTitleFanLX{font-size:15px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#accountEntryDetailFanLX{font-size:12px;color:#5B6472;background:transparent;}"
+        "QLabel#accountEntryArrowFanLX{font-size:18px;color:#8A94A3;background:transparent;}");
 }
 
 // 右侧四个入口：真正的按钮，标题、说明和箭头只是按钮里的标签。
@@ -94,7 +105,7 @@ QPushButton *accountEntryButtonFanLX(const QString &title, const QString &detail
     button->setProperty("role", QStringLiteral("accountEntry"));
     button->setCursor(Qt::PointingHandCursor);
     button->setFocusPolicy(Qt::StrongFocus);
-    button->setMinimumHeight(92);
+    button->setMinimumHeight(76);
     button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *row = new QHBoxLayout(button);
     row->setContentsMargins(16, 14, 14, 14);
@@ -259,18 +270,30 @@ class ServiceRowDelegateFanLX : public QStyledItemDelegate {
         initStyleOption(&opt, index);
         const bool marked = index.data(Qt::UserRole).toBool();
         const bool selected = (opt.state & QStyle::State_Selected) != 0;
-        QColor fill(QStringLiteral("#ffffff"));
-        if (selected)
-            fill = QColor(QStringLiteral("#d5e3fc"));
-        else if (marked)
-            fill = QColor(QStringLiteral("#eaf1fe"));
+        QColor fill(theme::panel);
+        if (selected || marked)
+            fill = QColor(theme::brandSoft);
         painter->save();
         painter->fillRect(opt.rect, fill);
-        painter->setPen(QColor(QStringLiteral("#1f2329")));
-        const QRect textRect = opt.rect.adjusted(8, 0, -8, -1);
+        if (marked && index.column() == 0) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(theme::brand));
+            painter->drawRoundedRect(QRectF(opt.rect.left() + 2, opt.rect.top() + 10, 3,
+                                            qMax(8, opt.rect.height() - 20)),
+                                     1.5, 1.5);
+        }
+        QColor ink(theme::text);
+        const auto foreground = index.data(Qt::ForegroundRole);
+        if (foreground.canConvert<QBrush>())
+            ink = foreground.value<QBrush>().color();
+        else if (foreground.canConvert<QColor>())
+            ink = foreground.value<QColor>();
+        painter->setPen(ink);
+        const int textLeft = marked && index.column() == 0 ? 14 : 8;
+        const QRect textRect = opt.rect.adjusted(textLeft, 0, -8, -1);
         painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
                           opt.fontMetrics.elidedText(opt.text, Qt::ElideRight, textRect.width()));
-        painter->setPen(QColor(QStringLiteral("#eef1f5")));
+        painter->setPen(QColor(theme::line));
         painter->drawLine(opt.rect.bottomLeft(), opt.rect.bottomRight());
         painter->restore();
     }
@@ -299,29 +322,34 @@ class ServiceTableFanLX : public QTableWidget {
 // 只作用于开通管理内容区。登录、绑定、资料子页面不在这棵控件树里。
 QString serviceBodyStyleFanLX() {
     return QStringLiteral(
-        "QWidget#accountServiceBodyFanLX{background:#f3f5f8;}"
-        "QFrame#serviceListCardFanLX,QFrame#serviceOpenCardFanLX{background:#ffffff;"
-        "border:1px solid #e3e7ed;border-radius:12px;}"
-        "QLabel#serviceCardTitleFanLX{font-size:15px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#serviceFieldCaptionFanLX{font-size:12px;color:#5b6472;background:transparent;}"
-        "QLabel#serviceOpenHintFanLX{font-size:12px;color:#8a94a3;background:transparent;}"
-        "QFrame#serviceOpenCardFanLX QComboBox{background:#ffffff;color:#1f2329;border:1px solid #d5dbe3;"
-        "border-radius:8px;padding:4px 10px;min-height:28px;}"
-        "QFrame#serviceOpenCardFanLX QComboBox:hover{border-color:#c3cad3;}"
-        "QFrame#serviceOpenCardFanLX QComboBox:focus{border-color:#2f6fed;}"
+        "QWidget#accountServiceBodyFanLX{background:#F6F7F9;}"
+        "QFrame#serviceListCardFanLX,QFrame#serviceOpenCardFanLX{background:#FFFFFF;"
+        "border:1px solid #E6E8EE;border-radius:8px;}"
+        "QLabel#serviceCardTitleFanLX{font-size:15px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#serviceFieldCaptionFanLX{font-size:12px;color:#5B6472;background:transparent;}"
+        "QLabel#serviceOpenHintFanLX{font-size:12px;color:#8A94A3;background:transparent;}"
+        "QFrame#serviceOpenCardFanLX QComboBox{background:#FFFFFF;color:#1F2329;border:1px solid #E6E8EE;"
+        "border-radius:8px;padding:0px 10px;min-height:36px;}"
+        "QFrame#serviceOpenCardFanLX QComboBox:hover{border-color:#D7DEE8;}"
+        "QFrame#serviceOpenCardFanLX QComboBox:focus{border-color:#2563EB;}"
         "QFrame#serviceOpenCardFanLX QComboBox::drop-down{border:none;width:22px;}"
-        "QFrame#serviceOpenCardFanLX QComboBox QAbstractItemView{background:#ffffff;color:#1f2329;"
-        "selection-background-color:#eaf1fe;selection-color:#1f2329;border:1px solid #e3e7ed;}"
-        "QFrame#serviceOpenCardFanLX QLineEdit{border:1px solid #d5dbe3;border-radius:8px;padding:4px 10px;"
-        "background:#ffffff;color:#1f2329;min-height:28px;}"
-        "QFrame#serviceOpenCardFanLX QLineEdit:focus{border:1px solid #2f6fed;}"
-        "QTableWidget#serviceAccountTableFanLX{background:#ffffff;alternate-background-color:#ffffff;"
-        "border:none;gridline-color:transparent;font-size:13px;color:#1f2329;"
-        "selection-background-color:#eaf1fe;selection-color:#1f2329;}"
-        "QTableWidget#serviceAccountTableFanLX::item{border:none;border-bottom:1px solid #eef1f5;padding:0px 8px;}"
-        "QTableWidget#serviceAccountTableFanLX::item:selected{background:#eaf1fe;color:#1f2329;}"
-        "QTableWidget#serviceAccountTableFanLX QHeaderView::section{background:#f7f9fb;color:#5b6472;"
-        "border:none;border-bottom:1px solid #e3e7ed;padding:8px;font-size:12px;font-weight:600;}");
+        "QFrame#serviceOpenCardFanLX QComboBox QAbstractItemView{background:#FFFFFF;color:#1F2329;"
+        "selection-background-color:#E8EFFD;selection-color:#1F2329;border:1px solid #E6E8EE;}"
+        "QFrame#serviceOpenCardFanLX QLineEdit{border:1px solid #E6E8EE;border-radius:8px;padding:0px 10px;"
+        "background:#FFFFFF;color:#1F2329;min-height:36px;}"
+        "QFrame#serviceOpenCardFanLX QLineEdit:focus{border:1px solid #2563EB;}"
+        "QWidget#accountServiceBodyFanLX QPushButton[role=\"primary\"]{background:#2563EB;color:#FFFFFF;"
+        "border:none;border-radius:8px;padding:0px 16px;min-height:36px;font-size:14px;font-weight:600;}"
+        "QWidget#accountServiceBodyFanLX QPushButton[role=\"primary\"]:hover{background:#1D4ED8;}"
+        "QWidget#accountServiceBodyFanLX QPushButton[role=\"primary\"]:pressed{background:#1E40AF;}"
+        "QWidget#accountServiceBodyFanLX QPushButton[role=\"primary\"]:disabled{background:#E6E8EE;color:#8A94A3;}"
+        "QTableWidget#serviceAccountTableFanLX{background:#FFFFFF;alternate-background-color:#FFFFFF;"
+        "border:none;gridline-color:transparent;font-size:13px;color:#1F2329;"
+        "selection-background-color:#E8EFFD;selection-color:#1F2329;}"
+        "QTableWidget#serviceAccountTableFanLX::item{border:none;border-bottom:1px solid #E6E8EE;padding:0px 8px;}"
+        "QTableWidget#serviceAccountTableFanLX::item:selected{background:#E8EFFD;color:#1F2329;}"
+        "QTableWidget#serviceAccountTableFanLX QHeaderView::section{background:#F3F5F8;color:#5B6472;"
+        "border:none;border-bottom:1px solid #E6E8EE;padding:8px;font-size:12px;font-weight:600;}");
 }
 
 // 左表右表单。窄于 1000px 时改为上下排列，避免六列被 35% 侧栏挤到无法阅读。
@@ -387,38 +415,115 @@ class AccountServiceBodyFanLX : public QWidget {
 // 登录 / 绑定 / 资料三个子页面共用。样式挂在本页自己的 objectName 上，不改 PageKit。
 QString accountManageStyleFanLX() {
     return QStringLiteral(
-        "QWidget#accountManageBodyFanLX{background:#f3f5f8;}"
-        "QFrame#accountManageCardFanLX{background:#ffffff;border:1px solid #e3e7ed;border-radius:12px;}"
-        "QLabel#accountManageTitleFanLX{font-size:15px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#accountManageHintFanLX{font-size:12px;color:#8a94a3;background:transparent;}"
-        "QLabel#accountManageFieldFanLX{font-size:12px;color:#5b6472;background:transparent;}"
-        "QLabel#accountManageResultFanLX{font-size:13px;color:#5b6472;background:transparent;}"
-        "QWidget#accountManageBodyFanLX QLineEdit{background:#ffffff;color:#1f2329;border:1px solid #d5dbe3;"
-        "border-radius:8px;padding:4px 10px;min-height:28px;}"
-        "QWidget#accountManageBodyFanLX QLineEdit:focus{border:1px solid #2f6fed;}"
-        "QWidget#accountManageBodyFanLX QComboBox{background:#ffffff;color:#1f2329;border:1px solid #d5dbe3;"
-        "border-radius:8px;padding:4px 10px;min-height:28px;}"
-        "QWidget#accountManageBodyFanLX QComboBox:hover{border-color:#c3cad3;}"
-        "QWidget#accountManageBodyFanLX QComboBox:focus{border-color:#2f6fed;}"
+        "QWidget#accountManageBodyFanLX{background:#F6F7F9;}"
+        "QFrame#accountManageCardFanLX{background:#FFFFFF;border:1px solid #E6E8EE;border-radius:8px;}"
+        "QLabel#accountManageTitleFanLX{font-size:15px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#accountManageHintFanLX{font-size:12px;color:#8A94A3;background:transparent;}"
+        "QLabel#accountManageFieldFanLX{font-size:12px;color:#5B6472;background:transparent;}"
+        "QLabel#accountManageResultFanLX{font-size:13px;color:#5B6472;background:transparent;}"
+        "QLabel#accountManageResultFanLX[tone=\"bad\"]{color:#DC2626;}"
+        "QWidget#accountManageBodyFanLX QLineEdit{background:#FFFFFF;color:#1F2329;border:1px solid #E6E8EE;"
+        "border-radius:8px;padding:0px 10px;min-height:36px;}"
+        "QWidget#accountManageBodyFanLX QLineEdit:focus{border:1px solid #2563EB;}"
+        "QWidget#accountManageBodyFanLX QComboBox{background:#FFFFFF;color:#1F2329;border:1px solid #E6E8EE;"
+        "border-radius:8px;padding:0px 10px;min-height:36px;}"
+        "QWidget#accountManageBodyFanLX QComboBox:hover{border-color:#D7DEE8;}"
+        "QWidget#accountManageBodyFanLX QComboBox:focus{border-color:#2563EB;}"
         "QWidget#accountManageBodyFanLX QComboBox::drop-down{border:none;width:22px;}"
-        "QWidget#accountManageBodyFanLX QComboBox QAbstractItemView{background:#ffffff;color:#1f2329;"
-        "selection-background-color:#eaf1fe;selection-color:#1f2329;border:1px solid #e3e7ed;}"
-        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]{background:#2f6fed;color:#ffffff;"
-        "border:none;border-radius:8px;padding:8px 16px;font-weight:600;}"
-        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]:hover{background:#245ed4;}"
-        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]:disabled{background:#e7ebf2;color:#8a94a3;}"
-        "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]{background:#ffffff;color:#d93025;"
-        "border:1px solid #f0b4b0;border-radius:8px;padding:8px 16px;font-weight:600;}"
-        "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:hover{background:#fdecea;border-color:#d93025;}"
+        "QWidget#accountManageBodyFanLX QComboBox QAbstractItemView{background:#FFFFFF;color:#1F2329;"
+        "selection-background-color:#E8EFFD;selection-color:#1F2329;border:1px solid #E6E8EE;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]{background:#2563EB;color:#FFFFFF;"
+        "border:none;border-radius:8px;padding:0px 16px;min-height:36px;font-size:14px;font-weight:600;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]:hover{background:#1D4ED8;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]:pressed{background:#1E40AF;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"primary\"]:disabled{background:#E6E8EE;color:#8A94A3;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]{background:transparent;color:#DC2626;"
+        "border:none;border-radius:8px;padding:0px 12px;min-height:36px;font-size:14px;font-weight:600;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:hover{background:#FEE2E2;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:pressed{background:#FEE2E2;}"
+        "QWidget#accountManageBodyFanLX QPushButton[role=\"danger\"]:disabled{color:#FECACA;background:transparent;}"
         "QListWidget#bindingListFanLX{background:transparent;border:none;outline:none;}"
         "QListWidget#bindingListFanLX::item{background:transparent;border:none;padding:0px;}"
-        "QListWidget#bindingListFanLX::item:selected{background:transparent;color:#1f2329;}"
-        "QWidget#bindingRowFanLX{background:#f7f9fb;border-radius:8px;margin-bottom:8px;}"
-        "QLabel#bindingServiceFanLX{font-size:12px;color:#8a94a3;background:transparent;}"
-        "QLabel#bindingAccountFanLX{font-size:14px;font-weight:600;color:#1f2329;background:transparent;}"
-        "QLabel#bindingMarkFanLX{font-size:12px;font-weight:600;color:#2f6fed;background:#eaf1fe;"
-        "border-radius:10px;padding:4px 10px;}"
-        "QLabel#bindingEmptyFanLX{font-size:13px;color:#8a94a3;background:transparent;}");
+        "QListWidget#bindingListFanLX::item:selected{background:transparent;color:#1F2329;}"
+        "QWidget#bindingRowFanLX{background:transparent;border:none;border-bottom:1px solid #E6E8EE;"
+        "border-radius:0px;}"
+        "QLabel#bindingServiceFanLX{font-size:12px;color:#8A94A3;background:transparent;}"
+        "QLabel#bindingAccountFanLX{font-size:14px;font-weight:600;color:#1F2329;background:transparent;}"
+        "QLabel#bindingMarkFanLX{font-size:12px;font-weight:600;color:#2563EB;background:#E8EFFD;"
+        "border-radius:10px;padding:2px 8px;}"
+        "QLabel#bindingEmptyFanLX{font-size:13px;color:#8A94A3;background:transparent;}");
+}
+
+void setAccountHintFanLX(QLabel *label, const QString &text, const QString &tone) {
+    if (!label)
+        return;
+    label->setText(text);
+    label->setProperty("tone", tone);
+    label->style()->unpolish(label);
+    label->style()->polish(label);
+    label->update();
+}
+
+// 子页标题自己带样式，避免 refresh 时 applyAccent 把整页样式表换掉后标题丢失颜色。
+QString accountSubHeaderStyleFanLX() {
+    return QStringLiteral(
+        "QWidget#accountSubHeaderFanLX{background:transparent;}"
+        "QPushButton#accountSubBackFanLX{background:transparent;color:#2563EB;border:none;"
+        "border-radius:8px;padding:4px 8px;font-size:14px;font-weight:600;}"
+        "QPushButton#accountSubBackFanLX:hover{background:#E8EFFD;}"
+        "QPushButton#accountSubBackFanLX:pressed{background:#E8EFFD;}"
+        "QLabel#accountSubTitleFanLX{color:#1F2329;font-size:20px;font-weight:600;background:transparent;}"
+        "QLabel#accountHeaderSubtitleFanLX{color:#5B6472;font-size:12px;background:transparent;}");
+}
+
+class AccountSubHeaderFanLX : public QWidget {
+  public:
+    explicit AccountSubHeaderFanLX(const QString &title, QWidget *parent = nullptr) : QWidget(parent) {
+        setObjectName(QStringLiteral("accountSubHeaderFanLX"));
+        setStyleSheet(accountSubHeaderStyleFanLX());
+        auto *row = new QHBoxLayout(this);
+        row->setContentsMargins(4, 0, 4, 8);
+        row->setSpacing(12);
+        back_ = new QPushButton(QStringLiteral("‹ 账号"), this);
+        back_->setObjectName(QStringLiteral("accountSubBackFanLX"));
+        back_->setCursor(Qt::PointingHandCursor);
+        back_->setFocusPolicy(Qt::StrongFocus);
+        auto *titles = new QVBoxLayout();
+        titles->setContentsMargins(0, 0, 0, 0);
+        titles->setSpacing(0);
+        auto *titleLabel = new QLabel(title, this);
+        titleLabel->setObjectName(QStringLiteral("accountSubTitleFanLX"));
+        auto *subtitle = new QLabel(this);
+        subtitle->setObjectName(QStringLiteral("accountHeaderSubtitleFanLX"));
+        titles->addWidget(titleLabel);
+        titles->addWidget(subtitle);
+        row->addWidget(back_, 0, Qt::AlignVCenter);
+        row->addLayout(titles, 1);
+    }
+
+    QPushButton *backButton() const { return back_; }
+
+  private:
+    QPushButton *back_ = nullptr;
+};
+
+// 藏起 PageKit 自带的「‹ 返回」和 16px 标题，换成本页的标题栏。原控件仍留在树上。
+void installAccountHeaderFanLX(QStackedWidget *stack, int index, const QString &title) {
+    auto *page = stack ? stack->widget(index) : nullptr;
+    if (!page)
+        return;
+    for (auto *button : page->findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (button->property("role").toString() == QLatin1String("back"))
+            button->hide();
+    }
+    for (auto *label : page->findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (label->property("role").toString() == QLatin1String("title"))
+            label->hide();
+    }
+    auto *header = new AccountSubHeaderFanLX(title, page);
+    QObject::connect(header->backButton(), &QPushButton::clicked, stack, [stack] { stack->setCurrentIndex(0); });
+    if (auto *layout = qobject_cast<QVBoxLayout *>(page->layout()))
+        layout->insertWidget(0, header);
 }
 
 constexpr int bindingRowHeightFanLX = 72;
@@ -654,7 +759,7 @@ void refillBindingListFanLX(QListWidget *list, const QStringList &rows) {
 AccountPageFanLX::AccountPageFanLX(DomainControllerFanLX *controller, QWidget *parent)
     : QWidget(parent), controllerFanLX(controller) {
     auto pagePalette = palette();
-    pagePalette.setColor(QPalette::Window, QColor(QStringLiteral("#f3f5f8")));
+    pagePalette.setColor(QPalette::Window, QColor(QStringLiteral("#F6F7F9")));
     setAutoFillBackground(true);
     setPalette(pagePalette);
 
@@ -664,16 +769,24 @@ AccountPageFanLX::AccountPageFanLX(DomainControllerFanLX *controller, QWidget *p
     if (auto *scroll = qobject_cast<QScrollArea *>(stackFanLX->widget(0))) {
         scroll->viewport()->setAutoFillBackground(true);
         auto viewportPalette = scroll->viewport()->palette();
-        viewportPalette.setColor(QPalette::Window, QColor(QStringLiteral("#f3f5f8")));
+        viewportPalette.setColor(QPalette::Window, QColor(QStringLiteral("#F6F7F9")));
         scroll->viewport()->setPalette(viewportPalette);
     }
-    kit::addSubPage(stackFanLX, QStringLiteral("开通管理"), buildServiceBodyFanLX());
-    kit::addSubPage(stackFanLX, QStringLiteral("登录管理"), buildLoginBodyFanLX());
-    kit::addSubPage(stackFanLX, QStringLiteral("绑定管理"), buildBindingBodyFanLX());
-    kit::addSubPage(stackFanLX, QStringLiteral("资料与密码"), buildMaintenanceBodyFanLX());
+    installAccountHeaderFanLX(stackFanLX,
+                              kit::addSubPage(stackFanLX, QStringLiteral("开通管理"), buildServiceBodyFanLX()),
+                              QStringLiteral("开通管理"));
+    installAccountHeaderFanLX(stackFanLX,
+                              kit::addSubPage(stackFanLX, QStringLiteral("登录管理"), buildLoginBodyFanLX()),
+                              QStringLiteral("登录管理"));
+    installAccountHeaderFanLX(stackFanLX,
+                              kit::addSubPage(stackFanLX, QStringLiteral("绑定管理"), buildBindingBodyFanLX()),
+                              QStringLiteral("绑定管理"));
+    installAccountHeaderFanLX(stackFanLX,
+                              kit::addSubPage(stackFanLX, QStringLiteral("资料与密码"), buildMaintenanceBodyFanLX()),
+                              QStringLiteral("资料与密码"));
 
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(6, 6, 6, 6);
+    outer->setContentsMargins(12, 12, 12, 12);
     outer->addWidget(stackFanLX);
 
     // 身份变化与任何写操作成功后都重读视图：界面显示的一定是内存里的最新状态。
@@ -687,26 +800,18 @@ AccountPageFanLX::AccountPageFanLX(DomainControllerFanLX *controller, QWidget *p
 QWidget *AccountPageFanLX::buildHomeFanLX() {
     auto *home = new AccountHomeFanLX();
     auto *outer = new QVBoxLayout(home);
-    outer->setContentsMargins(16, 18, 16, 24);
+    outer->setContentsMargins(16, 16, 16, 16);
     outer->setSpacing(0);
 
     auto *column = new QWidget(home);
     column->setFixedWidth(1040);
     auto *columnLayout = new QVBoxLayout(column);
     columnLayout->setContentsMargins(0, 0, 0, 0);
-    columnLayout->setSpacing(14);
+    columnLayout->setSpacing(16);
 
     auto *title = new QLabel(QStringLiteral("账号与服务"), column);
     title->setObjectName(QStringLiteral("accountPageTitleFanLX"));
-    auto *intro = new QLabel(
-        QStringLiteral("查看当前身份和个人资料，并进入开通、登录、绑定与资料维护。"), column);
-    intro->setObjectName(QStringLiteral("accountPageIntroFanLX"));
-    intro->setWordWrap(true);
-    auto *heading = new QVBoxLayout();
-    heading->setSpacing(4);
-    heading->addWidget(title);
-    heading->addWidget(intro);
-    columnLayout->addLayout(heading);
+    columnLayout->addWidget(title);
 
     // 当前身份栏：服务名、账号与切换下拉框放在同一条里。选中即切换。
     // 切换被拒（比如该服务还没登录）时，下拉框必须回到真正的当前服务，并弹出原因。
@@ -765,10 +870,13 @@ QWidget *AccountPageFanLX::buildHomeFanLX() {
 
     auto *columns = new AccountColumnsFanLX(column);
     auto *profile = buildProfileCardFanLX(columns);
-    auto *entries = new QWidget(columns);
+    auto *entries = new QFrame(columns);
+    entries->setObjectName(QStringLiteral("accountEntriesFanLX"));
+    entries->setFrameShape(QFrame::NoFrame);
+    entries->setAttribute(Qt::WA_StyledBackground, true);
     auto *entryLayout = new QVBoxLayout(entries);
     entryLayout->setContentsMargins(0, 0, 0, 0);
-    entryLayout->setSpacing(10);
+    entryLayout->setSpacing(0);
     const QStringList titles{QStringLiteral("开通管理"), QStringLiteral("登录管理"),
                              QStringLiteral("绑定管理"), QStringLiteral("资料与密码")};
     const QStringList details{
@@ -778,6 +886,10 @@ QWidget *AccountPageFanLX::buildHomeFanLX() {
         QStringLiteral("分别修改昵称、所在地，或更换登录密码。")};
     for (int index = 0; index < titles.size(); ++index) {
         auto *button = accountEntryButtonFanLX(titles.at(index), details.at(index), entries);
+        button->setProperty("lined", index + 1 < titles.size() ? QStringLiteral("true") : QStringLiteral("false"));
+        button->setProperty("edge", index == 0 ? QStringLiteral("first")
+                                                : index + 1 == titles.size() ? QStringLiteral("last")
+                                                                              : QStringLiteral("mid"));
         entryLayout->addWidget(button);
         connect(button, &QPushButton::clicked, this, [this, index] { stackFanLX->setCurrentIndex(index + 1); });
     }
@@ -818,6 +930,7 @@ QWidget *AccountPageFanLX::buildProfileCardFanLX(QWidget *parent) {
     avatarLabelFanLX = labelOf(QStringLiteral("avatar"));
     avatarLabelFanLX->setFixedSize(48, 48);
     avatarLabelFanLX->setAlignment(Qt::AlignCenter);
+    avatarLabelFanLX->setAttribute(Qt::WA_StyledBackground, true);
     nameLabelFanLX = labelOf(QStringLiteral("name"));
     nameLabelFanLX->setWordWrap(true);
     subtitleLabelFanLX = labelOf(QStringLiteral("caption"));
@@ -834,14 +947,12 @@ QWidget *AccountPageFanLX::buildProfileCardFanLX(QWidget *parent) {
     header->addLayout(titleColumn, 1);
     layout->addLayout(header);
 
-    // 三项统计：同一高度的浅底块，数字用正文色，不再用大号主题色。
+    // 三项统计直接排在资料卡里，不再套一层浅底小卡片。
     const auto statTile = [&](QLabel *&valueLabel, const QString &caption) {
-        auto *tile = new QFrame(frame);
-        tile->setObjectName(QStringLiteral("accountStatFanLX"));
+        auto *tile = new QWidget(frame);
         tile->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        tile->setMinimumHeight(72);
         auto *tileLayout = new QVBoxLayout(tile);
-        tileLayout->setContentsMargins(8, 10, 8, 10);
+        tileLayout->setContentsMargins(0, 0, 0, 0);
         tileLayout->setSpacing(2);
         valueLabel = new QLabel(tile);
         valueLabel->setObjectName(QStringLiteral("accountStatValueFanLX"));
@@ -854,11 +965,16 @@ QWidget *AccountPageFanLX::buildProfileCardFanLX(QWidget *parent) {
         return tile;
     };
     auto *stats = new QHBoxLayout();
-    stats->setSpacing(10);
+    stats->setSpacing(12);
     stats->addWidget(statTile(tAgeValueFanLX, QStringLiteral("T龄（年）")), 1);
     stats->addWidget(statTile(friendValueFanLX, QStringLiteral("好友")), 1);
     stats->addWidget(statTile(groupValueFanLX, QStringLiteral("群")), 1);
     layout->addLayout(stats);
+    auto *hairline = new QFrame(frame);
+    hairline->setObjectName(QStringLiteral("accountHairlineFanLX"));
+    hairline->setFrameShape(QFrame::NoFrame);
+    hairline->setFixedHeight(1);
+    layout->addWidget(hairline);
 
     // 详情两列：标签是次要色，值是正文色。出生与申请都是日期，不用「时间」。
     const auto detail = [&](QLabel *&valueLabel, const QString &caption) {
@@ -953,7 +1069,7 @@ QWidget *AccountPageFanLX::buildServiceBodyFanLX() {
     hint->setObjectName(QStringLiteral("serviceOpenHintFanLX"));
     hint->setWordWrap(true);
     subscribeButtonFanLX = kit::primaryButton(QStringLiteral("开通所选服务"), openCard);
-    subscribeButtonFanLX->setMinimumHeight(40);
+    subscribeButtonFanLX->setMinimumHeight(36);
     subscribeButtonFanLX->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     openLayout->addWidget(openTitle);
     openLayout->addSpacing(4);
@@ -1002,7 +1118,7 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
     confirmLayout->addWidget(confirmServiceComboFanLX);
     confirmLayout->addSpacing(4);
     confirmLoginButtonFanLX = kit::primaryButton(QStringLiteral("逐项确认登录"), confirmCard);
-    confirmLoginButtonFanLX->setMinimumHeight(40);
+    confirmLoginButtonFanLX->setMinimumHeight(36);
     confirmLayout->addWidget(confirmLoginButtonFanLX);
 
     auto *linkCard = manageCardFanLX(host);
@@ -1016,7 +1132,7 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
     // 一键联动：登微X 时已默认联动确认，所以只在"注销过 / 新开通了服务"后有事可做，
     // refreshFanLX 会据此启用或置灰它。
     linkAllButtonFanLX = kit::primaryButton(QStringLiteral("一键联动登录"), linkCard);
-    linkAllButtonFanLX->setMinimumHeight(40);
+    linkAllButtonFanLX->setMinimumHeight(36);
     linkLayout->addWidget(linkAllButtonFanLX);
 
     auto *split = new AccountSplitFanLX(host);
@@ -1032,8 +1148,8 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
         QStringLiteral("注销当前服务只退出正在使用的身份。全部注销会退出所有已登录服务。"), logoutCard));
     logoutButtonFanLX = kit::dangerButton(QStringLiteral("注销当前服务"), logoutCard);
     logoutAllButtonFanLX = kit::dangerButton(QStringLiteral("全部注销"), logoutCard);
-    logoutButtonFanLX->setFixedSize(176, 40);
-    logoutAllButtonFanLX->setFixedSize(176, 40);
+    logoutButtonFanLX->setMinimumHeight(36);
+    logoutAllButtonFanLX->setMinimumHeight(36);
     auto *logoutRow = new QHBoxLayout();
     logoutRow->setSpacing(12);
     logoutRow->addWidget(logoutButtonFanLX);
@@ -1097,8 +1213,8 @@ QWidget *AccountPageFanLX::buildBindingBodyFanLX() {
     formLayout->addSpacing(4);
     bindButtonFanLX = kit::primaryButton(QStringLiteral("绑定"), formCard);
     unbindButtonFanLX = kit::dangerButton(QStringLiteral("解绑"), formCard);
-    bindButtonFanLX->setMinimumHeight(40);
-    unbindButtonFanLX->setMinimumHeight(40);
+    bindButtonFanLX->setMinimumHeight(36);
+    unbindButtonFanLX->setMinimumHeight(36);
     auto *actions = new QHBoxLayout();
     actions->setSpacing(12);
     actions->addWidget(bindButtonFanLX, 1);
@@ -1142,23 +1258,17 @@ QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
     nicknameEditFanLX->setPlaceholderText(QStringLiteral("输入新昵称"));
     nicknameEditFanLX->setMinimumHeight(36);
     saveNicknameButtonFanLX = kit::primaryButton(QStringLiteral("保存昵称"), profileCard);
-    saveNicknameButtonFanLX->setMinimumSize(112, 40);
-    auto *nicknameRow = new QHBoxLayout();
-    nicknameRow->setSpacing(12);
-    nicknameRow->addWidget(nicknameEditFanLX, 1);
-    nicknameRow->addWidget(saveNicknameButtonFanLX);
-    profileLayout->addLayout(nicknameRow);
+    saveNicknameButtonFanLX->setMinimumHeight(36);
+    profileLayout->addWidget(nicknameEditFanLX);
+    profileLayout->addWidget(saveNicknameButtonFanLX, 0, Qt::AlignLeft);
     profileLayout->addWidget(manageFieldFanLX(QStringLiteral("所在地"), profileCard));
     locationEditFanLX = new QLineEdit(profileCard);
     locationEditFanLX->setPlaceholderText(QStringLiteral("输入新所在地"));
     locationEditFanLX->setMinimumHeight(36);
     saveLocationButtonFanLX = kit::primaryButton(QStringLiteral("保存所在地"), profileCard);
-    saveLocationButtonFanLX->setMinimumSize(112, 40);
-    auto *locationRow = new QHBoxLayout();
-    locationRow->setSpacing(12);
-    locationRow->addWidget(locationEditFanLX, 1);
-    locationRow->addWidget(saveLocationButtonFanLX);
-    profileLayout->addLayout(locationRow);
+    saveLocationButtonFanLX->setMinimumHeight(36);
+    profileLayout->addWidget(locationEditFanLX);
+    profileLayout->addWidget(saveLocationButtonFanLX, 0, Qt::AlignLeft);
 
     auto *passwordCard = manageCardFanLX(host);
     auto *passwordLayout = new QVBoxLayout(passwordCard);
@@ -1188,8 +1298,8 @@ QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
     passwordLayout->addWidget(repeatPasswordEditFanLX);
     passwordLayout->addSpacing(4);
     changePasswordButtonFanLX = kit::primaryButton(QStringLiteral("修改密码"), passwordCard);
-    changePasswordButtonFanLX->setMinimumHeight(40);
-    passwordLayout->addWidget(changePasswordButtonFanLX);
+    changePasswordButtonFanLX->setMinimumHeight(36);
+    passwordLayout->addWidget(changePasswordButtonFanLX, 0, Qt::AlignLeft);
 
     auto *split = new AccountSplitFanLX(host);
     split->setPanels(profileCard, passwordCard, 1, 1, 900);
@@ -1202,32 +1312,38 @@ QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
     connect(saveNicknameButtonFanLX, &QPushButton::clicked, this, [this] {
         const auto nickname = nicknameEditFanLX->text().trimmed();
         if (nickname.isEmpty()) {
-            hintLabelFanLX->setText(QStringLiteral("请先输入新昵称"));
+            setAccountHintFanLX(hintLabelFanLX, QStringLiteral("请先输入新昵称"), QStringLiteral("bad"));
             return;
         }
         // 只提交昵称：所在地传空串 = "这一项不改"。
-        if (controllerFanLX->updateProfile(nickname, QString()))
+        if (controllerFanLX->updateProfile(nickname, QString())) {
             nicknameEditFanLX->clear();
+            setAccountHintFanLX(hintLabelFanLX, QString(), QString());
+        }
     });
     connect(saveLocationButtonFanLX, &QPushButton::clicked, this, [this] {
         const auto location = locationEditFanLX->text().trimmed();
         if (location.isEmpty()) {
-            hintLabelFanLX->setText(QStringLiteral("请先输入新所在地"));
+            setAccountHintFanLX(hintLabelFanLX, QStringLiteral("请先输入新所在地"), QStringLiteral("bad"));
             return;
         }
-        if (controllerFanLX->updateProfile(QString(), location))
+        if (controllerFanLX->updateProfile(QString(), location)) {
             locationEditFanLX->clear();
+            setAccountHintFanLX(hintLabelFanLX, QString(), QString());
+        }
     });
     connect(changePasswordButtonFanLX, &QPushButton::clicked, this, [this] {
         // 两次输入必须一致：否则用户会用一个自己以为不对的密码锁死账号。
         if (newPasswordEditFanLX->text() != repeatPasswordEditFanLX->text()) {
-            hintLabelFanLX->setText(QStringLiteral("两次输入的新密码不一致，未提交"));
+            setAccountHintFanLX(hintLabelFanLX, QStringLiteral("两次输入的新密码不一致，未提交"),
+                                QStringLiteral("bad"));
             return;
         }
         if (controllerFanLX->changePassword(oldPasswordEditFanLX->text(), newPasswordEditFanLX->text())) {
             oldPasswordEditFanLX->clear();
             newPasswordEditFanLX->clear();
             repeatPasswordEditFanLX->clear();
+            setAccountHintFanLX(hintLabelFanLX, QString(), QString());
         }
     });
     return page;
@@ -1239,9 +1355,17 @@ void AccountPageFanLX::refreshFanLX() {
 
     kit::applyAccent(this, controllerFanLX->currentService());
 
+    const bool anyLogin = controllerFanLX->hasAnyLogin();
+    const bool currentLoggedIn = controllerFanLX->currentServiceLoggedIn();
+    const auto serviceName = controllerFanLX->currentService();
+    const auto accountName = controllerFanLX->currentAccountId();
+    const auto headerSubtitle = currentLoggedIn ? QStringLiteral("%1 · %2").arg(serviceName, accountName)
+                                                : QStringLiteral("%1 未登录").arg(serviceName);
+    for (auto *label : findChildren<QLabel *>(QStringLiteral("accountHeaderSubtitleFanLX")))
+        label->setText(headerSubtitle);
+
     // 当前身份
-    identityLabelFanLX->setText(QStringLiteral("%1 · %2")
-                                    .arg(controllerFanLX->currentService(), controllerFanLX->currentAccountId()));
+    identityLabelFanLX->setText(QStringLiteral("%1 · %2").arg(serviceName, accountName));
     identityLabelFanLX->setToolTip(QStringLiteral("微X号 %1 ｜ 已提交领域事务 %2 次")
                                        .arg(controllerFanLX->weixAccountId())
                                        .arg(controllerFanLX->commitCount()));
@@ -1255,7 +1379,7 @@ void AccountPageFanLX::refreshFanLX() {
             const bool loggedIn = controllerFanLX->isServiceLoggedIn(name);
             platformComboFanLX->addItem(loggedIn ? name : name + QStringLiteral("（未登录）"), name);
             if (!loggedIn)
-                platformComboFanLX->setItemData(platformComboFanLX->count() - 1, QColor(QStringLiteral("#9aa0a6")),
+                platformComboFanLX->setItemData(platformComboFanLX->count() - 1, QColor(theme::textMuted),
                                                 Qt::ForegroundRole);
         }
         const int currentIndex = platformComboFanLX->findData(current);
@@ -1263,13 +1387,12 @@ void AccountPageFanLX::refreshFanLX() {
             platformComboFanLX->setCurrentIndex(currentIndex);
     }
 
-    const bool anyLogin = controllerFanLX->hasAnyLogin();
-    const bool currentLoggedIn = controllerFanLX->currentServiceLoggedIn();
     bannerFanLX->setVisible(!currentLoggedIn);
     reloginButtonFanLX->setVisible(!anyLogin);
     bannerLabelFanLX->setText(
         !anyLogin ? QStringLiteral("已全部注销：当前没有任何登录中的服务。点右侧「重新登录微X」恢复。")
-                  : QStringLiteral("%1 未登录：到「登录管理」里确认登录，或在右上角切换到已登录的服务。").arg(current));
+                  : QStringLiteral("%1 未登录：到「登录管理」里确认登录，或在右上角切换到已登录的服务。")
+                        .arg(serviceName));
 
     // 一键联动登录：只在"本人已开通但未登录"的服务非空时可用（否则点了也没有任何变化）。
     linkAllButtonFanLX->setEnabled(controllerFanLX->hasUnlinkedServices());
@@ -1277,12 +1400,20 @@ void AccountPageFanLX::refreshFanLX() {
     // 用户基本信息卡片
     const auto profile = controllerFanLX->profileView();
     const auto orDash = [](const QString &text) { return text.trimmed().isEmpty() ? QStringLiteral("—") : text; };
+    const auto paintAvatar = [this](const QString &seed, const QString &glyph) {
+        avatarLabelFanLX->setText(glyph);
+        // 控件自己的样式表盖过页面样式，头像底色才跟聊天、好友列表是同一套。
+        avatarLabelFanLX->setStyleSheet(
+            QStringLiteral("background:%1;color:#ffffff;border-radius:24px;font-size:20px;font-weight:600;")
+                .arg(seed.isEmpty() ? theme::textMuted : theme::avatarColor(seed)));
+    };
     if (!profile.valid) {
         nameLabelFanLX->setText(QStringLiteral("未登录"));
         subtitleLabelFanLX->clear();
+        paintAvatar(QString(), QString());
     } else {
         const auto initial = (profile.nickname.isEmpty() ? profile.weixId : profile.nickname).left(1);
-        avatarLabelFanLX->setText(initial);
+        paintAvatar(profile.weixId.isEmpty() ? profile.accountId : profile.weixId, initial);
         nameLabelFanLX->setText(orDash(profile.nickname));
         subtitleLabelFanLX->setText(QStringLiteral("微X号 %1 · 当前 %2 %3")
                                         .arg(profile.weixId, profile.service,
@@ -1310,12 +1441,16 @@ void AccountPageFanLX::refreshFanLX() {
             row.bound ? QStringLiteral("已绑定") : QStringLiteral("未绑定"),
             row.subscribed ? QStringLiteral("已开通") : QStringLiteral("未开通"),
             row.loggedIn ? QStringLiteral("已登录") : QStringLiteral("未登录")};
-        const QColor currentBackground(QStringLiteral("#eaf1fe"));
+        const QColor currentBackground(QStringLiteral("#E8EFFD"));
         for (int column = 0; column < cells.size(); ++column) {
             auto *item = new QTableWidgetItem(cells.at(column));
             item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
             item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             item->setData(Qt::UserRole, row.current);
+            if (column >= 3 && cells.at(column).startsWith(QStringLiteral("已")))
+                item->setForeground(QColor(theme::success));
+            else if (column >= 3 && cells.at(column).startsWith(QStringLiteral("未")))
+                item->setForeground(QColor(theme::textMuted));
             if (row.current)
                 item->setBackground(currentBackground);
             serviceTableFanLX->setItem(index, column, item);

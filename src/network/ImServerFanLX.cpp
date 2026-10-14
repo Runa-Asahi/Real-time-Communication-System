@@ -11,11 +11,18 @@
 #include "persistence/PersistenceErrorFanLX.h"
 #include "persistence/PlatformStateFanLX.h"
 #include "network/FriendRequestBookFanLX.h"
+#include "network/P2pProtocolFanLX.h"
 #include "network/TemporaryChatQuotaFanLX.h"
 #include "infra/UtcClockFanLX.h"
 #include <nlohmann/json.hpp>
+#include <algorithm>
+#include <iomanip>
+#include <iostream>
+#include <map>
 #include <random>
 #include <set>
+#include <sstream>
+#include <unordered_map>
 
 using namespace chatDbFanLX;
 
@@ -124,6 +131,27 @@ struct ImServerFanLX::Impl {
         Clock::time_point sentAt = Clock::now();
         bool syncing = false;
         DeliveryCursorMapFanLX cursors; // 本次连接内已确认的会话进度
+        // 客户端自己宣告的可达端点（ep:ipv4:port）。空表示只走中转。
+        // 不用本连接的源地址替换它：源地址常常是 NAT 或回环，不等于对端能连上的地址。
+        std::string directEndpoint;
+        bool inFlightDirect = false;
+    };
+    enum class RouteStateFanLX { RelayOnly, DirectConnecting, DirectReady, DirectDegraded };
+    struct PairRouteFanLX {
+        RouteStateFanLX state = RouteStateFanLX::RelayOnly;
+        std::string ticket;
+        std::string connector;
+        std::string acceptor;
+        Clock::time_point offerAt = Clock::now();
+        Clock::time_point retryAfter = Clock::time_point::min();
+    };
+    struct TicketFanLX {
+        std::string service;
+        std::string connector;
+        std::string acceptor;
+        Clock::time_point expires = Clock::now();
+        bool connectorReady = false;
+        bool acceptorReady = false;
     };
     const PlatformStateFanLX &state;
     std::filesystem::path directory;
@@ -142,6 +170,10 @@ struct ImServerFanLX::Impl {
     std::vector<std::unique_ptr<Session>> sessions;
     std::size_t accepted = 0;
     std::size_t slowDisconnects = 0;
+    std::map<std::string, PairRouteFanLX> routes;
+    std::unordered_map<std::string, TicketFanLX> tickets;
+    std::set<std::uint64_t> directTried;
+    DirectRouteStatsFanLX routeStats;
 
     Impl(const PlatformStateFanLX &s, const std::filesystem::path &dir, unsigned short port,
          const std::string &ip, OptionsFanLX serverOptions)
@@ -746,6 +778,7 @@ struct ImServerFanLX::Impl {
         }
         if (m.type == "SYNC") { s.syncing = true; loadCursors(s); return; }
         if (m.type == "ACK") { handleAck(s, m); return; }
+        if (p2pFanLX::isDirectTypeFanLX(m.type)) { handleDirect(s, m); return; }
         if (m.type != "SEND") throw std::runtime_error("客户端请求类型非法");
         handleSend(s, std::move(m));
     }
@@ -790,8 +823,10 @@ struct ImServerFanLX::Impl {
             }
             socketIoFanLX::commit(directory, db, std::move(next));
         }
+        directTried.erase(s.inFlight);
         inFlightKeys.erase(s.inFlight);
         s.inFlight = 0;
+        s.inFlightDirect = false;
     }
 
     // 当前在途投递所属会话（服务器内部登记，客户端不能指定）。
@@ -799,6 +834,266 @@ struct ImServerFanLX::Impl {
     std::string inFlightConversation(Session &s) const {
         const auto found = inFlightKeys.find(s.inFlight);
         return found == inFlightKeys.end() ? std::string() : found->second;
+    }
+
+    // 单聊路由：RelayOnly → DirectConnecting → DirectReady，失败进入 DirectDegraded。
+    // 消息在 DirectReady 时先发 P2P_ARM（text 只有哈希，正文不进服务器帧），
+    // 接收方落库后仍走原来的 ACK。3 秒没有 ACK 就用同一 messageId 改发 DELIVER（RelayFallback）。
+    // 群、离线、非好友、临时会话，以及发送方自己的历史回显，始终 DELIVER。
+    Session *findSession(ServiceTypeFanLX service, const std::string &user) {
+        for (auto &other : sessions)
+            if (other->service == service && other->user == user && !other->peer->ended())
+                return other.get();
+        return nullptr;
+    }
+    std::string pairKeyFanLX(ServiceTypeFanLX service, const std::string &a, const std::string &b) const {
+        return serviceNameFanLX(service) + "\n" + std::min(a, b) + "\n" + std::max(a, b);
+    }
+    static std::string makeTicketFanLX() {
+        std::random_device random;
+        std::mt19937_64 generator(random());
+        std::ostringstream out;
+        out << std::hex << std::setfill('0') << std::setw(16) << generator() << std::setw(16) << generator();
+        return out.str();
+    }
+    void degradeRoute(PairRouteFanLX &route, bool countFail) {
+        if (route.state != RouteStateFanLX::DirectConnecting && route.state != RouteStateFanLX::DirectReady)
+            return;
+        route.state = RouteStateFanLX::DirectDegraded;
+        route.retryAfter = Clock::now() + std::chrono::seconds(8);
+        route.ticket.clear();
+        if (countFail)
+            ++routeStats.directFail;
+    }
+    void degradeUser(ServiceTypeFanLX service, const std::string &user, bool countFail) {
+        const auto prefix = serviceNameFanLX(service) + "\n";
+        for (auto &entry : routes) {
+            if (entry.first.rfind(prefix, 0) != 0)
+                continue;
+            const auto rest = entry.first.substr(prefix.size());
+            const auto split = rest.find('\n');
+            if (split == std::string::npos)
+                continue;
+            const auto lo = rest.substr(0, split);
+            const auto hi = rest.substr(split + 1);
+            if (lo == user || hi == user)
+                degradeRoute(entry.second, countFail);
+        }
+    }
+    void sweepRoutes() {
+        for (auto &entry : routes) {
+            if (entry.second.state == RouteStateFanLX::DirectConnecting &&
+                Clock::now() - entry.second.offerAt > std::chrono::seconds(5)) {
+                degradeRoute(entry.second, true);
+                std::cerr << "fanlx-p2p route=DirectDegraded reason=timeout peers=" << entry.second.connector
+                          << "/" << entry.second.acceptor << '\n';
+            }
+        }
+        for (auto it = tickets.begin(); it != tickets.end();) {
+            if (Clock::now() >= it->second.expires && !it->second.connectorReady)
+                it = tickets.erase(it);
+            else
+                ++it;
+        }
+    }
+    void considerOffers(Session &s) {
+        if (s.user.empty() || s.directEndpoint.empty())
+            return;
+        for (const auto &id : friendIdsOf(s.service, s.user)) {
+            auto *peer = findSession(s.service, id);
+            if (!peer || peer->directEndpoint.empty() || !friends(s, s.user, id))
+                continue;
+            auto &route = routes[pairKeyFanLX(s.service, s.user, id)];
+            if (route.state == RouteStateFanLX::DirectReady || route.state == RouteStateFanLX::DirectConnecting)
+                continue;
+            if (route.state == RouteStateFanLX::DirectDegraded && Clock::now() < route.retryAfter)
+                continue;
+            const bool selfConnects = s.user < id;
+            route.connector = selfConnects ? s.user : id;
+            route.acceptor = selfConnects ? id : s.user;
+            route.ticket = makeTicketFanLX();
+            route.state = RouteStateFanLX::DirectConnecting;
+            route.offerAt = Clock::now();
+            TicketFanLX ticket;
+            ticket.service = serviceNameFanLX(s.service);
+            ticket.connector = route.connector;
+            ticket.acceptor = route.acceptor;
+            ticket.expires = Clock::now() + std::chrono::seconds(30);
+            tickets[route.ticket] = ticket;
+            auto *connector = selfConnects ? &s : peer;
+            auto *acceptor = selfConnects ? peer : &s;
+            auto offer = socketIoFanLX::control(p2pFanLX::offerTypeFanLX);
+            offer.sender = connector->user;
+            offer.recipient = acceptor->user;
+            offer.requestId = route.ticket;
+            offer.text = acceptor->directEndpoint;
+            write(*connector, offer);
+            auto expect = socketIoFanLX::control(p2pFanLX::expectTypeFanLX);
+            expect.sender = acceptor->user;
+            expect.recipient = connector->user;
+            expect.requestId = route.ticket;
+            expect.text = connector->directEndpoint;
+            write(*acceptor, expect);
+            std::cerr << "fanlx-p2p route=DirectConnecting service=" << ticket.service << " peers="
+                      << route.connector << "/" << route.acceptor << '\n';
+        }
+    }
+    void handleDirect(Session &s, const ChatMessageFanLX &m) {
+        if (m.type == p2pFanLX::helloTypeFanLX) {
+            std::string ip;
+            unsigned short port = 0;
+            std::string canonical;
+            if (!m.text.empty() && p2pFanLX::parseEndpointFanLX(m.text, ip, port))
+                canonical = p2pFanLX::formatEndpointFanLX(ip, port);
+            else if (!m.text.empty())
+                std::cerr << "fanlx-p2p hello-rejected account=" << s.user << '\n';
+            if (canonical != s.directEndpoint)
+                degradeUser(s.service, s.user, false);
+            s.directEndpoint = canonical;
+            if (!canonical.empty())
+                considerOffers(s);
+            return;
+        }
+        if (m.type == p2pFanLX::readyTypeFanLX) {
+            auto found = tickets.find(m.requestId);
+            if (found == tickets.end() || Clock::now() >= found->second.expires ||
+                found->second.service != serviceNameFanLX(s.service))
+                return;
+            auto &ticket = found->second;
+            if (s.user == ticket.connector)
+                ticket.connectorReady = true;
+            else if (s.user == ticket.acceptor)
+                ticket.acceptorReady = true;
+            else
+                return;
+            if (!ticket.connectorReady || !ticket.acceptorReady)
+                return;
+            auto &route = routes[pairKeyFanLX(s.service, ticket.connector, ticket.acceptor)];
+            if (route.ticket != m.requestId || route.state == RouteStateFanLX::DirectReady)
+                return;
+            route.state = RouteStateFanLX::DirectReady;
+            ++routeStats.directSuccess;
+            std::cerr << "fanlx-p2p route=DirectReady service=" << ticket.service << " peers="
+                      << ticket.connector << "/" << ticket.acceptor << '\n';
+            return;
+        }
+        if (m.type == p2pFanLX::failTypeFanLX) {
+            const auto reason = m.text == "timeout" || m.text == "connect" || m.text == "rejected" ||
+                                        m.text == "closed"
+                                    ? m.text
+                                    : std::string("fail");
+            auto found = tickets.find(m.requestId);
+            if (found != tickets.end()) {
+                if (s.user != found->second.connector && s.user != found->second.acceptor)
+                    return;
+                const auto service = parseChannelServiceFanLX(found->second.service);
+                auto route = routes.find(pairKeyFanLX(service, found->second.connector, found->second.acceptor));
+                if (route != routes.end())
+                    degradeRoute(route->second, true);
+                tickets.erase(found);
+            } else if (!m.recipient.empty()) {
+                auto route = routes.find(pairKeyFanLX(s.service, s.user, m.recipient));
+                if (route != routes.end())
+                    degradeRoute(route->second, true);
+            }
+            std::cerr << "fanlx-p2p route=DirectDegraded reason=" << reason << '\n';
+            return;
+        }
+    }
+    bool canArm(const Session &recipient, const ChatMessageFanLX &out) const {
+        if (out.scope != "direct" || out.messageId == 0 || recipient.user.empty())
+            return false;
+        if (recipient.user == out.sender || recipient.user != out.recipient)
+            return false;
+        if (recipient.directEndpoint.empty() || directTried.count(out.messageId))
+            return false;
+        if (!friends(recipient, out.sender, out.recipient))
+            return false;
+        const Session *sender = nullptr;
+        for (const auto &other : sessions)
+            if (other->service == recipient.service && other->user == out.sender && !other->peer->ended())
+                sender = other.get();
+        if (!sender || sender->directEndpoint.empty())
+            return false;
+        const auto found = routes.find(pairKeyFanLX(recipient.service, out.sender, out.recipient));
+        return found != routes.end() && found->second.state == RouteStateFanLX::DirectReady;
+    }
+    void ship(Session &s, ChatMessageFanLX out, const std::string &conversationKey, bool group) {
+        const auto body = out.text;
+        if (!group && canArm(s, out)) {
+            out.type = p2pFanLX::armTypeFanLX;
+            out.text = p2pFanLX::hashBodyFanLX(body);
+            s.inFlightDirect = true;
+            directTried.insert(out.messageId);
+            ++routeStats.p2pMessages;
+            std::cerr << "fanlx-p2p deliver route=p2p messageId=" << out.messageId << '\n';
+            if (auto *sender = findSession(s.service, out.sender)) {
+                auto push = out;
+                push.type = p2pFanLX::pushTypeFanLX;
+                write(*sender, push);
+            }
+        } else {
+            out.type = "DELIVER";
+            out.text = body;
+            s.inFlightDirect = false;
+            ++routeStats.relayMessages;
+            if (group || out.scope == "group")
+                ++routeStats.groupRelayMessages;
+            else {
+                ++routeStats.relayDirectMessages;
+                if (s.user != out.sender)
+                    ++routeStats.peerRelayBodies;
+            }
+            std::cerr << "fanlx-p2p deliver route=relay messageId=" << out.messageId << '\n';
+        }
+        if (!out.messageId)
+            return;
+        s.inFlight = out.messageId;
+        s.sentAt = Clock::now();
+        inFlightKeys[s.inFlight] = conversationKey;
+        write(s, out);
+    }
+    void relayArmed(Session &s) {
+        ChatMessageFanLX out;
+        bool found = false;
+        if (useSqlite) {
+            const auto row = store->findById(static_cast<std::int64_t>(s.inFlight));
+            if (row && row->messageId) {
+                out = socketIoFanLX::control("DELIVER");
+                out.sender = plainIdFanLX(row->sender);
+                out.recipient = plainIdFanLX(row->recipient);
+                out.scope = "direct";
+                out.messageId = s.inFlight;
+                out.conversationSeq = static_cast<std::uint64_t>(row->conversationSequence);
+                out.requestId = row->requestId;
+                out.text = row->body;
+                out.acceptedAtUtc = row->acceptedAtUtc;
+                out.protocolVersion = imProtocolVersionV3FanLX;
+                found = true;
+            }
+        } else {
+            for (const auto &row : db.at("messages")) {
+                auto stored = socketIoFanLX::message(row.at("message"));
+                if (stored.messageId != s.inFlight)
+                    continue;
+                out = stored;
+                out.type = "DELIVER";
+                found = true;
+                break;
+            }
+        }
+        s.inFlightDirect = false;
+        if (!found)
+            return;
+        ++routeStats.fallbacks;
+        ++routeStats.relayMessages;
+        ++routeStats.relayDirectMessages;
+        ++routeStats.peerRelayBodies;
+        write(s, out);
+        auto route = routes.find(pairKeyFanLX(s.service, out.sender, out.recipient));
+        if (route != routes.end())
+            degradeRoute(route->second, true);
+        std::cerr << "fanlx-p2p deliver route=RelayFallback messageId=" << out.messageId << '\n';
     }
 
     void handleSend(Session &s, ChatMessageFanLX m) {
@@ -916,10 +1211,7 @@ struct ImServerFanLX::Impl {
                 out.text = row.body;
                 out.acceptedAtUtc = row.acceptedAtUtc;
                 out.protocolVersion = imProtocolVersionV3FanLX;
-                s.inFlight = out.messageId;
-                s.sentAt = Clock::now();
-                inFlightKeys[s.inFlight] = candidate.conversationKey;
-                write(s, out);
+                ship(s, out, candidate.conversationKey, parts.group);
                 return;
             }
             if (s.syncing) {
@@ -939,9 +1231,7 @@ struct ImServerFanLX::Impl {
                                  ? db.at("acks").at(channelUser).value(key, std::uint64_t{0})
                                  : 0;
             if (m.conversationSeq <= ack) continue;
-            s.inFlight = m.messageId;
-            s.sentAt = Clock::now();
-            write(s, m);
+            ship(s, m, key, m.scope == "group");
             return;
         }
         if (s.syncing) {
@@ -964,6 +1254,7 @@ struct ImServerFanLX::Impl {
         } catch (const std::runtime_error &error) {
             if (std::string(error.what()) != "网络操作超时") throw;
         }
+        sweepRoutes();
         for (auto &s : sessions) {
             if (s->peer->ended()) continue;
             for (int budget = 0; budget < 32; ++budget) {
@@ -991,8 +1282,13 @@ struct ImServerFanLX::Impl {
             if (Clock::now() - s->last > std::chrono::seconds(20) ||
                 (s->inFlight && Clock::now() - s->sentAt > std::chrono::seconds(10))) {
                 s->peer->close();
-            } else
+            } else {
+                // 直连 3 秒未确认就改发同一条的中转正文，不等到 10 秒把整条连接关掉。
+                if (s->inFlightDirect && s->inFlight &&
+                    Clock::now() - s->sentAt > std::chrono::seconds(3))
+                    relayArmed(*s);
                 deliver(*s);
+            }
             // 每轮都推进待发送缓冲：慢客户端只影响它自己，不阻塞其他用户。
             if (!s->peer->ended() && !s->peer->flushSend(16)) {
                 s->peer->close();
@@ -1004,6 +1300,8 @@ struct ImServerFanLX::Impl {
             const auto service = (*it)->service;
             if ((*it)->inFlight)
                 inFlightKeys.erase((*it)->inFlight);
+            if (!user.empty())
+                degradeUser(service, user, false);
             it = sessions.erase(it);
             // 会话对象已被销毁，只剩身份（服务 + 账号）可用：同一服务里没有其它在线会话时才播报下线。
             if (!user.empty() && !online(service, user)) presence(service, user, false);
@@ -1033,3 +1331,4 @@ std::size_t ImServerFanLX::connectionsAccepted() const { return implFanLX->accep
 std::string ImServerFanLX::instanceId() const { return implFanLX->instanceId; }
 std::string ImServerFanLX::storageBackend() const { return implFanLX->useSqlite ? "sqlite" : "json"; }
 std::size_t ImServerFanLX::slowPeerDisconnects() const { return implFanLX->slowDisconnects; }
+ImServerFanLX::DirectRouteStatsFanLX ImServerFanLX::directRouteStats() const { return implFanLX->routeStats; }

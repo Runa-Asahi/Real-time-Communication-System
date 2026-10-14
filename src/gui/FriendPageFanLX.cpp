@@ -10,7 +10,10 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPair>
 #include <QPushButton>
+#include <algorithm>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QShowEvent>
 #include <QSizePolicy>
@@ -108,6 +111,29 @@ void setInlineResultFanLX(QLabel *label, const QString &text, bool ok) {
     polishPropertyFanLX(label);
 }
 
+// 宽窗口左右并排，窄窗口上下叠。两张卡片始终同一套宽度规则。
+class FriendPairFanLX : public QWidget {
+  public:
+    FriendPairFanLX(QWidget *first, QWidget *second, QWidget *parent = nullptr) : QWidget(parent) {
+        layout_ = new QBoxLayout(QBoxLayout::TopToBottom, this);
+        layout_->setContentsMargins(0, 0, 0, 0);
+        layout_->setSpacing(16);
+        layout_->addWidget(first, 1);
+        layout_->addWidget(second, 1);
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override {
+        QWidget::resizeEvent(event);
+        const auto direction = width() >= 880 ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom;
+        if (layout_->direction() != direction)
+            layout_->setDirection(direction);
+    }
+
+  private:
+    QBoxLayout *layout_ = nullptr;
+};
+
 // 子页内容列：最宽约 1040，窄窗口仍能缩到 0，避免把外层滚动区域撑出横向滚动条。
 QWidget *friendSubpageShellFanLX(QVBoxLayout **columnLayout, int maxWidth) {
     auto *page = new QWidget();
@@ -139,7 +165,7 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
     : QWidget(parent), controllerFanLX(controller) {
     setObjectName(QStringLiteral("friendPageFanLX"));
     setAttribute(Qt::WA_StyledBackground, true);
-    const QColor pageBg(QStringLiteral("#f3f5f8"));
+    const QColor pageBg(QStringLiteral("#F6F7F9"));
     setAutoFillBackground(true);
     auto pagePalette = palette();
     pagePalette.setColor(QPalette::Window, pageBg);
@@ -160,7 +186,7 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
     installFriendHeaderFanLX(kRemarkPage, QStringLiteral("备注与标签"));
 
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(6, 6, 6, 6);
+    outer->setContentsMargins(12, 12, 12, 12);
     outer->addWidget(stackFanLX);
     for (auto *scroll : findChildren<QScrollArea *>()) {
         scroll->setAutoFillBackground(true);
@@ -179,6 +205,21 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
     for (auto *list : {friendListFanLX, resultListFanLX, candidateListFanLX, incomingListFanLX, outgoingListFanLX,
                        temporaryListFanLX})
         list->setItemDelegate(rowDelegateFanLX);
+    rowDelegateFanLX->setActionHandler([this](const QString &peer, const QString &action) {
+        if (peer.isEmpty() || !controllerFanLX->currentServiceLoggedIn())
+            return;
+        if (action == QLatin1String("accept"))
+            controllerFanLX->acceptFriendRequest(peer);
+        else if (action == QLatin1String("reject"))
+            controllerFanLX->rejectFriendRequest(peer);
+        else if (action == QLatin1String("cancel"))
+            controllerFanLX->cancelFriendRequest(peer);
+        else
+            return;
+        refreshRequestsFanLX();
+        if (requestsHintFanLX)
+            requestsHintFanLX->setText(controllerFanLX->lastMessage());
+    });
 
     // 当前平台切换与任何好友写操作成功后都要重读列表。
     connect(controllerFanLX, &DomainControllerFanLX::dataChangedFanLX, this, &FriendPageFanLX::refreshFanLX);
@@ -200,17 +241,21 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
 
     homeTitleFanLX = new QLabel(home);
     homeTitleFanLX->setObjectName(QStringLiteral("friendHomeTitleFanLX"));
+    homeTitleFanLX->setText(QStringLiteral("好友"));
+    homeCountFanLX = new QLabel(home);
+    homeCountFanLX->setObjectName(QStringLiteral("friendHomeCountFanLX"));
     searchEditFanLX = new QLineEdit(home);
     searchEditFanLX->setObjectName(QStringLiteral("friendSearchFanLX"));
     searchEditFanLX->setPlaceholderText(QStringLiteral("搜索号码、备注或标签"));
     searchEditFanLX->setClearButtonEnabled(true);
-    searchEditFanLX->setFixedWidth(240);
     auto *titleRow = new QHBoxLayout();
-    titleRow->setSpacing(12);
-    titleRow->addWidget(homeTitleFanLX, 1);
-    titleRow->addWidget(searchEditFanLX, 0, Qt::AlignVCenter);
+    titleRow->setSpacing(8);
+    titleRow->addWidget(homeTitleFanLX, 0, Qt::AlignVCenter);
+    titleRow->addWidget(homeCountFanLX, 0, Qt::AlignVCenter);
+    titleRow->addStretch(1);
 
     listHintFanLX = kit::hintLabel(home);
+    listHintFanLX->hide();
 
     auto *addNav = friendPrimaryButtonFanLX(QStringLiteral("＋ 添加好友"), home);
     requestsNavButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("好友申请"), home);
@@ -219,7 +264,6 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
     requestBadgeFanLX->setAlignment(Qt::AlignCenter);
     requestBadgeFanLX->setMinimumWidth(18);
     requestBadgeFanLX->hide();
-    auto *queryNav = friendSecondaryButtonFanLX(QStringLiteral("共同好友"), home);
     auto *requestWrap = new QWidget(home);
     auto *requestRow = new QHBoxLayout(requestWrap);
     requestRow->setContentsMargins(0, 0, 0, 0);
@@ -230,7 +274,6 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
     toolbar->setSpacing(8);
     toolbar->addWidget(addNav);
     toolbar->addWidget(requestWrap);
-    toolbar->addWidget(queryNav);
     toolbar->addStretch(1);
 
     friendListFanLX = new QListWidget(home);
@@ -243,47 +286,82 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
     homeListStackFanLX->addWidget(friendListFanLX);
     homeListStackFanLX->addWidget(homeEmptyFanLX);
 
-    auto *detail = new QFrame(home);
-    detail->setObjectName(QStringLiteral("friendDetailFanLX"));
-    detail->setFrameShape(QFrame::NoFrame);
-    detail->setAttribute(Qt::WA_StyledBackground, true);
-    detail->setFixedWidth(320);
-    auto *detailLayout = new QVBoxLayout(detail);
+    detailPanelFanLX = new QFrame(home);
+    detailPanelFanLX->setObjectName(QStringLiteral("friendDetailFanLX"));
+    detailPanelFanLX->setFrameShape(QFrame::NoFrame);
+    detailPanelFanLX->setAttribute(Qt::WA_StyledBackground, true);
+    detailPanelFanLX->setFixedWidth(340);
+    detailPanelFanLX->hide();
+    auto *detailLayout = new QVBoxLayout(detailPanelFanLX);
     detailLayout->setContentsMargins(20, 24, 20, 20);
     detailLayout->setSpacing(8);
-    detailAvatarFanLX = new FriendAvatarFanLX(detail);
-    detailRemarkFanLX = new QLabel(detail);
+    detailAvatarFanLX = new FriendAvatarFanLX(detailPanelFanLX);
+    detailRemarkFanLX = new QLabel(detailPanelFanLX);
     detailRemarkFanLX->setObjectName(QStringLiteral("friendDetailRemarkFanLX"));
     detailRemarkFanLX->setWordWrap(true);
-    detailAccountFanLX = new QLabel(detail);
+    detailRemarkFanLX->setAlignment(Qt::AlignHCenter);
+    detailAccountFanLX = new QLabel(detailPanelFanLX);
     detailAccountFanLX->setObjectName(QStringLiteral("friendDetailAccountFanLX"));
-    detailTagFanLX = new QLabel(detail);
+    detailAccountFanLX->setAlignment(Qt::AlignHCenter);
+    detailTagFanLX = new QLabel(detailPanelFanLX);
     detailTagFanLX->setObjectName(QStringLiteral("friendTagChipFanLX"));
-    remarkNavButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("备注 / 标签"), detail);
-    detailCommonButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("共同好友"), detail);
-    removeButtonFanLX = friendDangerButtonFanLX(QStringLiteral("删除好友"), detail);
+    chatButtonFanLX = friendMiniButtonFanLX(QStringLiteral("发消息"), true, detailPanelFanLX);
+    remarkNavButtonFanLX = friendMiniButtonFanLX(QStringLiteral("备注"), false, detailPanelFanLX);
+    detailCommonButtonFanLX = friendMiniButtonFanLX(QStringLiteral("共同好友"), false, detailPanelFanLX);
+    removeButtonFanLX = friendQuietButtonFanLX(QStringLiteral("删除好友"), detailPanelFanLX);
+    auto *detailActions = new QHBoxLayout();
+    detailActions->setSpacing(8);
+    detailActions->addWidget(chatButtonFanLX, 1);
+    detailActions->addWidget(remarkNavButtonFanLX, 1);
+    detailActions->addWidget(detailCommonButtonFanLX, 1);
     detailLayout->addWidget(detailAvatarFanLX, 0, Qt::AlignHCenter);
     detailLayout->addWidget(detailRemarkFanLX);
     detailLayout->addWidget(detailAccountFanLX);
-    detailLayout->addWidget(detailTagFanLX, 0, Qt::AlignLeft);
+    detailLayout->addWidget(detailTagFanLX, 0, Qt::AlignHCenter);
     detailLayout->addSpacing(8);
-    detailLayout->addWidget(remarkNavButtonFanLX);
-    detailLayout->addWidget(detailCommonButtonFanLX);
-    detailLayout->addWidget(removeButtonFanLX);
+    detailLayout->addLayout(detailActions);
     detailLayout->addStretch(1);
+    detailLayout->addWidget(removeButtonFanLX, 0, Qt::AlignHCenter);
+
+    narrowActionsFanLX = new QWidget(home);
+    narrowActionsFanLX->setObjectName(QStringLiteral("friendNarrowActionsFanLX"));
+    narrowActionsFanLX->hide();
+    auto *narrowRow = new QHBoxLayout(narrowActionsFanLX);
+    narrowRow->setContentsMargins(0, 0, 0, 0);
+    narrowRow->setSpacing(8);
+    narrowChatButtonFanLX = friendMiniButtonFanLX(QStringLiteral("发消息"), true, narrowActionsFanLX);
+    narrowRemarkButtonFanLX = friendMiniButtonFanLX(QStringLiteral("备注"), false, narrowActionsFanLX);
+    narrowCommonButtonFanLX = friendMiniButtonFanLX(QStringLiteral("共同好友"), false, narrowActionsFanLX);
+    narrowRemoveButtonFanLX = friendQuietButtonFanLX(QStringLiteral("删除好友"), narrowActionsFanLX);
+    narrowRow->addWidget(narrowChatButtonFanLX);
+    narrowRow->addWidget(narrowRemarkButtonFanLX);
+    narrowRow->addWidget(narrowCommonButtonFanLX);
+    narrowRow->addStretch(1);
+    narrowRow->addWidget(narrowRemoveButtonFanLX);
 
     auto *split = new QHBoxLayout();
-    split->setSpacing(16);
+    split->setSpacing(0);
     split->addWidget(homeListStackFanLX, 1);
-    split->addWidget(detail);
+    split->addWidget(detailPanelFanLX);
     layout->addLayout(titleRow);
+    layout->addWidget(searchEditFanLX);
     layout->addWidget(listHintFanLX);
     layout->addLayout(toolbar);
+    layout->addWidget(narrowActionsFanLX);
     layout->addLayout(split, 1);
 
     const auto openAdd = [this] {
         refreshCandidatesFanLX();
         stackFanLX->setCurrentIndex(kAddPage);
+    };
+    const auto removeSelected = [this] {
+        const auto peer = selectedPeerFanLX();
+        if (peer.isEmpty()) {
+            listHintFanLX->setVisible(true);
+            listHintFanLX->setText(QStringLiteral("请先在列表里选中要删除的好友"));
+            return;
+        }
+        confirmRemoveFriendFanLX(peer);
     };
     connect(addNav, &QPushButton::clicked, this, openAdd);
     connect(emptyAction, &QPushButton::clicked, this, openAdd);
@@ -292,45 +370,46 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
         stackFanLX->setCurrentIndex(kRequestsPage);
         refreshRequestsFanLX();
     });
-    // 工具栏只进入查询页，不替用户发查询。
-    connect(queryNav, &QPushButton::clicked, this, [this] { stackFanLX->setCurrentIndex(kQueryPage); });
+    connect(chatButtonFanLX, &QPushButton::clicked, this, [this] { activateFriendRowFanLX(); });
+    connect(narrowChatButtonFanLX, &QPushButton::clicked, this, [this] { activateFriendRowFanLX(); });
     connect(remarkNavButtonFanLX, &QPushButton::clicked, this, [this] { openRemarkPageFanLX(); });
+    connect(narrowRemarkButtonFanLX, &QPushButton::clicked, this, [this] { openRemarkPageFanLX(); });
     connect(detailCommonButtonFanLX, &QPushButton::clicked, this,
             [this] { openCommonQueryFanLX(selectedPeerFanLX()); });
-    connect(friendListFanLX, &QListWidget::itemDoubleClicked, this, [this] { openRemarkPageFanLX(); });
+    connect(narrowCommonButtonFanLX, &QPushButton::clicked, this,
+            [this] { openCommonQueryFanLX(selectedPeerFanLX()); });
+    connect(friendListFanLX, &QListWidget::itemActivated, this, [this] { activateFriendRowFanLX(); });
     connect(searchEditFanLX, &QLineEdit::textChanged, this, [this] { applyFriendFilterFanLX(); });
-    connect(removeButtonFanLX, &QPushButton::clicked, this, [this] {
-        const auto peer = selectedPeerFanLX();
-        if (peer.isEmpty()) {
-            listHintFanLX->setText(QStringLiteral("请先在列表里选中要删除的好友"));
-            return;
-        }
-        confirmRemoveFriendFanLX(peer);
-    });
+    connect(removeButtonFanLX, &QPushButton::clicked, this, removeSelected);
+    connect(narrowRemoveButtonFanLX, &QPushButton::clicked, this, removeSelected);
     connect(friendListFanLX, &QListWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
-        const auto viewportPos = friendListFanLX->viewport()->mapFrom(friendListFanLX, pos);
-        auto *item = friendListFanLX->itemAt(viewportPos);
+        // QAbstractScrollArea 把这个坐标映射到 viewport，itemAt 用的也是 viewport 坐标。
+        auto *item = friendListFanLX->itemAt(pos);
         if (!item)
             return;
         friendListFanLX->setCurrentItem(item);
-        const auto peer = peerOfRowFanLX(item->text());
-        if (peer.isEmpty())
+        const auto parts = friendLinePartsFanLX(item->text());
+        if (!parts.friendRecord)
             return;
         QMenu menu(friendDialogParentFanLX(this));
         const bool loggedIn = controllerFanLX->currentServiceLoggedIn();
+        auto *chat = menu.addAction(QStringLiteral("发消息"));
         auto *remark = menu.addAction(QStringLiteral("备注/标签"));
         auto *common = menu.addAction(QStringLiteral("共同好友"));
         auto *remove = menu.addAction(QStringLiteral("删除"));
+        chat->setEnabled(loggedIn);
         remark->setEnabled(loggedIn);
         common->setEnabled(loggedIn);
         remove->setEnabled(loggedIn);
-        const auto *chosen = menu.exec(friendListFanLX->viewport()->mapToGlobal(viewportPos));
-        if (chosen == remark)
+        const auto *chosen = menu.exec(friendListFanLX->viewport()->mapToGlobal(pos));
+        if (chosen == chat)
+            activateFriendRowFanLX();
+        else if (chosen == remark)
             openRemarkPageFanLX();
         else if (chosen == common)
-            openCommonQueryFanLX(peer);
+            openCommonQueryFanLX(parts.account);
         else if (chosen == remove)
-            confirmRemoveFriendFanLX(peer);
+            confirmRemoveFriendFanLX(parts.account);
     });
     return home;
 }
@@ -346,7 +425,6 @@ QWidget *FriendPageFanLX::buildAddBodyFanLX() {
     notice->setAttribute(Qt::WA_StyledBackground, true);
 
     auto *byNumber = new FriendCardFanLX(QStringLiteral("按号码发送申请"), page);
-    byNumber->setMaximumWidth(560);
     peerEditFanLX = new QLineEdit(byNumber);
     peerEditFanLX->setPlaceholderText(QStringLiteral("对方在当前服务的号码，如 2026002"));
     noteEditFanLX = new QLineEdit(byNumber);
@@ -361,7 +439,7 @@ QWidget *FriendPageFanLX::buildAddBodyFanLX() {
     sourceServiceComboFanLX = new QComboBox(byService);
     candidateListFanLX = new QListWidget(byService);
     candidateEmptyFanLX =
-        new FriendEmptyStateFanLX(QStringLiteral("（本人还没有开通其它服务）"), QString(), byService);
+        new FriendEmptyStateFanLX(QStringLiteral("还没有开通其它服务"), QString(), byService);
     candidateStackFanLX = new QStackedWidget(byService);
     candidateStackFanLX->setMinimumHeight(300);
     candidateStackFanLX->addWidget(candidateListFanLX);
@@ -376,8 +454,7 @@ QWidget *FriendPageFanLX::buildAddBodyFanLX() {
     addHintFanLX->setObjectName(QStringLiteral("friendInlineResultFanLX"));
 
     layout->addWidget(notice);
-    layout->addWidget(byNumber, 0, Qt::AlignLeft);
-    layout->addWidget(byService);
+    layout->addWidget(new FriendPairFanLX(byNumber, byService, page));
     layout->addWidget(addHintFanLX);
 
     connect(addButtonFanLX, &QPushButton::clicked, this, [this] {
@@ -449,20 +526,11 @@ QWidget *FriendPageFanLX::buildRequestsBodyFanLX() {
         return pane;
     };
     auto *incomingPane = makePane(&incomingListFanLX, &incomingEmptyFanLX, &incomingStackFanLX,
-                                  QStringLiteral("（没有待处理的申请）"));
+                                  QStringLiteral("还没有待处理的申请"));
     auto *outgoingPane = makePane(&outgoingListFanLX, &outgoingEmptyFanLX, &outgoingStackFanLX,
-                                  QStringLiteral("（没有等待中的申请）"));
+                                  QStringLiteral("还没有发出的申请"));
     auto *temporaryPane = makePane(&temporaryListFanLX, &temporaryEmptyFanLX, &temporaryStackFanLX,
-                                   QStringLiteral("（没有临时会话）"));
-    acceptButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("同意"), incomingPane);
-    rejectButtonFanLX = friendDangerButtonFanLX(QStringLiteral("拒绝"), incomingPane);
-    cancelButtonFanLX = friendDangerButtonFanLX(QStringLiteral("撤回"), outgoingPane);
-    auto *incomingButtons = new QHBoxLayout();
-    incomingButtons->addStretch(1);
-    incomingButtons->addWidget(acceptButtonFanLX);
-    incomingButtons->addWidget(rejectButtonFanLX);
-    qobject_cast<QVBoxLayout *>(incomingPane->layout())->addLayout(incomingButtons);
-    qobject_cast<QVBoxLayout *>(outgoingPane->layout())->addWidget(cancelButtonFanLX, 0, Qt::AlignRight);
+                                   QStringLiteral("还没有临时会话"));
     temporaryNoteFanLX = new QLabel(temporaryPane);
     temporaryNoteFanLX->setObjectName(QStringLiteral("friendTemporaryNoteFanLX"));
     qobject_cast<QVBoxLayout *>(temporaryPane->layout())->insertWidget(0, temporaryNoteFanLX);
@@ -476,23 +544,6 @@ QWidget *FriendPageFanLX::buildRequestsBodyFanLX() {
     layout->addWidget(requestStackFanLX);
     setRequestSegmentFanLX(0);
 
-    const auto act = [this](QListWidget *list, bool (DomainControllerFanLX::*op)(const QString &)) {
-        const auto peer = selectedPeerOfFanLX(list);
-        if (peer.isEmpty()) {
-            requestsHintFanLX->setText(QStringLiteral("请先在列表里选中一条申请"));
-            return;
-        }
-        (controllerFanLX->*op)(peer);
-        const auto message = controllerFanLX->lastMessage();
-        refreshRequestsFanLX();
-        requestsHintFanLX->setText(message);
-    };
-    connect(acceptButtonFanLX, &QPushButton::clicked, this,
-            [this, act] { act(incomingListFanLX, &DomainControllerFanLX::acceptFriendRequest); });
-    connect(rejectButtonFanLX, &QPushButton::clicked, this,
-            [this, act] { act(incomingListFanLX, &DomainControllerFanLX::rejectFriendRequest); });
-    connect(cancelButtonFanLX, &QPushButton::clicked, this,
-            [this, act] { act(outgoingListFanLX, &DomainControllerFanLX::cancelFriendRequest); });
     connect(requestsRefreshButtonFanLX, &QPushButton::clicked, this, &FriendPageFanLX::refreshRequestsFanLX);
     connect(incomingSegmentFanLX, &QPushButton::clicked, this, [this] { setRequestSegmentFanLX(0); });
     connect(outgoingSegmentFanLX, &QPushButton::clicked, this, [this] { setRequestSegmentFanLX(1); });
@@ -507,6 +558,7 @@ void FriendPageFanLX::refreshRequestsFanLX() {
     if (rowDelegateFanLX)
         rowDelegateFanLX->setDirectionLimit(view.reachable ? view.limit : 0);
     const auto showBadge = [this](int count) {
+        emit incomingRequestsChangedFanLX(count);
         if (!requestBadgeFanLX)
             return;
         if (count <= 0) {
@@ -525,7 +577,7 @@ void FriendPageFanLX::refreshRequestsFanLX() {
         list->clear();
         if (!view.reachable) {
             empty->setError(true);
-            empty->setText(QStringLiteral("（服务端不可达）"), controllerFanLX->lastMessage());
+            empty->setText(QStringLiteral("暂时联系不上服务器"), controllerFanLX->lastMessage());
             stack->setCurrentWidget(empty);
         } else if (rows.isEmpty()) {
             empty->setError(false);
@@ -543,11 +595,11 @@ void FriendPageFanLX::refreshRequestsFanLX() {
                               : QStringLiteral("%1（–）").arg(name);
     };
     fillPane(incomingListFanLX, incomingEmptyFanLX, incomingStackFanLX, view.incoming,
-             QStringLiteral("（没有待处理的申请）"));
+             QStringLiteral("还没有待处理的申请"));
     fillPane(outgoingListFanLX, outgoingEmptyFanLX, outgoingStackFanLX, view.outgoing,
-             QStringLiteral("（没有等待中的申请）"));
+             QStringLiteral("还没有发出的申请"));
     fillPane(temporaryListFanLX, temporaryEmptyFanLX, temporaryStackFanLX, view.temporary,
-             QStringLiteral("（没有临时会话）"));
+             QStringLiteral("还没有临时会话"));
     if (incomingSegmentFanLX)
         incomingSegmentFanLX->setText(segmentText(QStringLiteral("收到的申请"), view.incoming.size()));
     if (outgoingSegmentFanLX)
@@ -568,7 +620,11 @@ void FriendPageFanLX::refreshRequestsFanLX() {
     } else {
         requestsHintFanLX->setText(controllerFanLX->lastMessage());
     }
+    pendingIncomingFanLX = view.reachable ? view.incoming : QStringList();
+    pendingTemporaryFanLX = view.reachable ? view.temporary : QStringList();
+    pendingServiceFanLX = controllerFanLX->currentService();
     showBadge(view.reachable ? view.incoming.size() : 0);
+    rebuildFriendListFanLX();
     int segment = requestStackFanLX ? requestStackFanLX->currentIndex() : 0;
     if (pickRequestSegmentFanLX) {
         pickRequestSegmentFanLX = false;
@@ -610,11 +666,11 @@ void FriendPageFanLX::refreshCandidatesFanLX() {
     QString emptyText;
     QStringList rows;
     if (source.isEmpty()) {
-        emptyText = QStringLiteral("（本人还没有开通其它服务）");
+        emptyText = QStringLiteral("还没有开通其它服务");
     } else {
         rows = controllerFanLX->crossServiceFriendCandidates(source);
         if (rows.isEmpty())
-            emptyText = QStringLiteral("（%1 里没有可换算的好友）").arg(source);
+            emptyText = QStringLiteral("%1 里没有可换算的好友").arg(source);
     }
     if (!emptyText.isEmpty() && candidateEmptyFanLX && candidateStackFanLX) {
         candidateEmptyFanLX->setError(false);
@@ -659,24 +715,19 @@ QWidget *FriendPageFanLX::buildQueryBodyFanLX() {
     QVBoxLayout *layout = nullptr;
     auto *page = friendSubpageShellFanLX(&layout, 1100);
 
-    auto *sameCard = new FriendCardFanLX(QStringLiteral("同服务"), page);
-    commonPeerEditFanLX = new QLineEdit(sameCard);
+    auto *form = new FriendCardFanLX(QStringLiteral("共同好友"), page);
+    commonPeerEditFanLX = new QLineEdit(form);
     commonPeerEditFanLX->setPlaceholderText(QStringLiteral("同一服务内对方的号码"));
-    commonButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("查询同服务共同好友"), sameCard);
-    auto *sameRow = new QHBoxLayout();
-    sameRow->setSpacing(8);
-    sameRow->addWidget(commonPeerEditFanLX, 1);
-    sameRow->addWidget(commonButtonFanLX);
-    sameCard->bodyLayout()->addLayout(sameRow);
-
-    auto *crossCard = new FriendCardFanLX(QStringLiteral("跨服务"), page);
-    targetServiceComboFanLX = new QComboBox(crossCard);
-    recommendButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("推荐好友"), crossCard);
-    crossCommonButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("跨服务共同好友"), crossCard);
+    commonButtonFanLX = friendPrimaryButtonFanLX(QStringLiteral("查询"), form);
+    targetServiceComboFanLX = new QComboBox(form);
+    recommendButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("推荐好友"), form);
+    crossCommonButtonFanLX = friendSecondaryButtonFanLX(QStringLiteral("跨服务共同好友"), form);
     recommendButtonFanLX->setToolTip(QStringLiteral("把另一个服务里的好友推荐到当前服务（查询后需手动添加）"));
-    crossCard->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("另一个服务"), targetServiceComboFanLX, crossCard));
-    crossCard->bodyLayout()->addWidget(recommendButtonFanLX);
-    crossCard->bodyLayout()->addWidget(crossCommonButtonFanLX);
+    form->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("对方号码"), commonPeerEditFanLX, form));
+    form->bodyLayout()->addWidget(commonButtonFanLX, 0, Qt::AlignLeft);
+    form->bodyLayout()->addWidget(friendFieldFanLX(QStringLiteral("另一个服务"), targetServiceComboFanLX, form));
+    form->bodyLayout()->addWidget(recommendButtonFanLX, 0, Qt::AlignLeft);
+    form->bodyLayout()->addWidget(crossCommonButtonFanLX, 0, Qt::AlignLeft);
 
     auto *left = new QWidget(page);
     left->setMinimumWidth(0);
@@ -685,8 +736,7 @@ QWidget *FriendPageFanLX::buildQueryBodyFanLX() {
     auto *leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(16);
-    leftLayout->addWidget(sameCard);
-    leftLayout->addWidget(crossCard);
+    leftLayout->addWidget(form);
 
     auto *rightCard = new FriendCardFanLX(QString(), page);
     resultTitleFanLX = new QLabel(QStringLiteral("查询结果"), rightCard);
@@ -738,9 +788,104 @@ QWidget *FriendPageFanLX::buildQueryBodyFanLX() {
     return page;
 }
 
+QString FriendPageFanLX::selectedFriendRowFanLX() const {
+    auto *item = friendListFanLX ? friendListFanLX->currentItem() : nullptr;
+    if (!item)
+        return {};
+    const auto parts = friendLinePartsFanLX(item->text());
+    return parts.friendRecord ? item->text() : QString();
+}
+
 QString FriendPageFanLX::selectedPeerFanLX() const {
-    auto *item = friendListFanLX->currentItem();
-    return item ? peerOfRowFanLX(item->text()) : QString();
+    return friendLinePartsFanLX(selectedFriendRowFanLX()).account;
+}
+
+void FriendPageFanLX::activateFriendRowFanLX() {
+    auto *item = friendListFanLX ? friendListFanLX->currentItem() : nullptr;
+    if (!item || !controllerFanLX)
+        return;
+    const auto parts = friendLinePartsFanLX(item->text());
+    if (parts.placeholder || parts.account.isEmpty())
+        return;
+    if (parts.friendRecord) {
+        emit chatWithPeerFanLX(parts.account, false);
+        return;
+    }
+    if (parts.subtitle.contains(QStringLiteral("我已发"))) {
+        emit chatWithPeerFanLX(parts.account, true);
+        return;
+    }
+    pickRequestSegmentFanLX = true;
+    stackFanLX->setCurrentIndex(kRequestsPage);
+    refreshRequestsFanLX();
+}
+
+void FriendPageFanLX::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    updateDetailPlacementFanLX();
+}
+
+void FriendPageFanLX::updateDetailPlacementFanLX() {
+    const bool selected = !selectedPeerFanLX().isEmpty();
+    const bool wide = width() >= 960;
+    if (detailPanelFanLX)
+        detailPanelFanLX->setVisible(wide && selected);
+    if (narrowActionsFanLX)
+        narrowActionsFanLX->setVisible(!wide && selected);
+}
+
+void FriendPageFanLX::rebuildFriendListFanLX() {
+    if (!friendListFanLX || !controllerFanLX)
+        return;
+    const auto selected = selectedPeerFanLX();
+    QList<QPair<QString, QStringList>> groups;
+    QStringList untagged;
+    const auto addToGroup = [&](const QString &tag, const QString &row) {
+        for (auto &group : groups) {
+            if (group.first == tag) {
+                group.second.push_back(row);
+                return;
+            }
+        }
+        groups.push_back({tag, {row}});
+    };
+    for (const auto &row : controllerFanLX->friendRows()) {
+        const auto parts = friendLinePartsFanLX(row);
+        if (parts.tag.isEmpty())
+            untagged.push_back(row);
+        else
+            addToGroup(parts.tag, row);
+    }
+    std::sort(groups.begin(), groups.end(), [](const auto &left, const auto &right) {
+        return left.first.localeAwareCompare(right.first) < 0;
+    });
+    friendListFanLX->blockSignals(true);
+    friendListFanLX->clear();
+    const auto addHeader = [this](const QString &title) {
+        friendListFanLX->addItem(QStringLiteral("（%1）").arg(title));
+    };
+    if (!pendingIncomingFanLX.isEmpty() || !pendingTemporaryFanLX.isEmpty()) {
+        addHeader(QStringLiteral("待处理"));
+        friendListFanLX->addItems(pendingIncomingFanLX);
+        friendListFanLX->addItems(pendingTemporaryFanLX);
+    }
+    for (const auto &group : groups) {
+        addHeader(group.first);
+        friendListFanLX->addItems(group.second);
+    }
+    if (!untagged.isEmpty()) {
+        addHeader(QStringLiteral("未分组"));
+        friendListFanLX->addItems(untagged);
+    }
+    for (int index = 0; index < friendListFanLX->count() && !selected.isEmpty(); ++index) {
+        const auto parts = friendLinePartsFanLX(friendListFanLX->item(index)->text());
+        if (parts.friendRecord && parts.account == selected) {
+            friendListFanLX->setCurrentRow(index);
+            break;
+        }
+    }
+    friendListFanLX->blockSignals(false);
+    applyFriendFilterFanLX();
 }
 
 void FriendPageFanLX::openRemarkPageFanLX() {
@@ -749,9 +894,10 @@ void FriendPageFanLX::openRemarkPageFanLX() {
         listHintFanLX->setText(QStringLiteral("请先在列表里选中一位好友"));
         return;
     }
+    const auto parts = friendLinePartsFanLX(selectedFriendRowFanLX());
     remarkPeerEditFanLX->setText(peer);
-    remarkEditFanLX->clear();
-    tagEditFanLX->clear();
+    remarkEditFanLX->setText(parts.remark);
+    tagEditFanLX->setText(parts.tag);
     stackFanLX->setCurrentIndex(kRemarkPage);
 }
 
@@ -759,28 +905,29 @@ void FriendPageFanLX::refreshFanLX() {
     if (!controllerFanLX->opened())
         return;
     applyFriendChromeFanLX(this, controllerFanLX->currentService());
-    const auto selected = selectedPeerFanLX();
-    friendListFanLX->blockSignals(true);
-    friendListFanLX->clear();
-    friendListFanLX->addItems(controllerFanLX->friendRows());
-    for (int index = 0; index < friendListFanLX->count() && !selected.isEmpty(); ++index) {
-        if (peerOfRowFanLX(friendListFanLX->item(index)->text()) == selected) {
-            friendListFanLX->setCurrentRow(index);
-            break;
-        }
-    }
-    friendListFanLX->blockSignals(false);
     const bool loggedIn = controllerFanLX->currentServiceLoggedIn();
     const auto service = controllerFanLX->currentService();
     const auto account = controllerFanLX->currentAccountId();
-    if (homeTitleFanLX) {
-        homeTitleFanLX->setText(loggedIn ? QStringLiteral("%1 好友 · %2 人").arg(service).arg(
-                                               controllerFanLX->friendAccounts().size())
-                                         : QStringLiteral("%1 好友").arg(service));
+    if (pendingServiceFanLX != service) {
+        pendingServiceFanLX = service;
+        pendingIncomingFanLX.clear();
+        pendingTemporaryFanLX.clear();
+        emit incomingRequestsChangedFanLX(0);
+        if (isVisible())
+            QTimer::singleShot(0, this, [this] { refreshRequestsFanLX(); });
     }
-    listHintFanLX->setText(
-        loggedIn ? QStringLiteral("%1 · %2").arg(service, account)
-                 : QStringLiteral("%1 未登录：请到「账号与服务」确认登录，或切换到已登录的服务").arg(service));
+    if (homeTitleFanLX)
+        homeTitleFanLX->setText(QStringLiteral("好友"));
+    if (homeCountFanLX) {
+        homeCountFanLX->setVisible(loggedIn);
+        homeCountFanLX->setText(loggedIn ? QString::number(controllerFanLX->friendAccounts().size()) : QString());
+    }
+    if (listHintFanLX) {
+        listHintFanLX->setVisible(!loggedIn);
+        if (!loggedIn)
+            listHintFanLX->setText(
+                QStringLiteral("%1 未登录：请到「账号与服务」确认登录，或切换到已登录的服务").arg(service));
+    }
     const auto subtitle = loggedIn ? QStringLiteral("%1 · %2").arg(service, account)
                                    : QStringLiteral("%1 未登录").arg(service);
     for (auto *label : findChildren<QLabel *>(QStringLiteral("friendHeaderSubtitleFanLX")))
@@ -808,7 +955,7 @@ void FriendPageFanLX::refreshFanLX() {
         sourceServiceComboFanLX->setCurrentIndex(sourceIndex);
     sourceServiceComboFanLX->blockSignals(false);
     refreshCandidatesFanLX();
-    applyFriendFilterFanLX();
+    rebuildFriendListFanLX();
 }
 
 void FriendPageFanLX::showEvent(QShowEvent *event) {
@@ -838,17 +985,39 @@ void FriendPageFanLX::applyFriendFilterFanLX() {
     if (!friendListFanLX || !searchEditFanLX)
         return;
     const auto key = searchEditFanLX->text().trimmed();
-    int visible = 0;
+    int friendTotal = 0;
     for (int index = 0; index < friendListFanLX->count(); ++index) {
         auto *item = friendListFanLX->item(index);
         const auto parts = friendLinePartsFanLX(item->text());
-        // 只匹配号码、备注、标签三个字段，不用整行原文。
-        const bool match = key.isEmpty() ||
+        if (parts.friendRecord)
+            ++friendTotal;
+        // 只匹配号码、备注、标签三个字段，不用整行原文。分组标题先藏起来，下面再按有没有可见好友决定。
+        const bool match = parts.placeholder || key.isEmpty() ||
                            (parts.friendRecord && (parts.account.contains(key, Qt::CaseInsensitive) ||
                                                    parts.remark.contains(key, Qt::CaseInsensitive) ||
                                                    parts.tag.contains(key, Qt::CaseInsensitive)));
-        item->setHidden(!match);
-        if (match)
+        item->setHidden(!match && !parts.placeholder);
+        if (!parts.placeholder && !parts.friendRecord && !key.isEmpty())
+            item->setHidden(true);
+    }
+    for (int index = 0; index < friendListFanLX->count(); ++index) {
+        auto *item = friendListFanLX->item(index);
+        if (!friendLinePartsFanLX(item->text()).placeholder)
+            continue;
+        bool follow = false;
+        for (int next = index + 1; next < friendListFanLX->count(); ++next) {
+            const auto parts = friendLinePartsFanLX(friendListFanLX->item(next)->text());
+            if (parts.placeholder)
+                break;
+            if (!friendListFanLX->item(next)->isHidden())
+                follow = true;
+        }
+        item->setHidden(!follow);
+    }
+    int visible = 0;
+    for (int index = 0; index < friendListFanLX->count(); ++index) {
+        auto *item = friendListFanLX->item(index);
+        if (!item->isHidden() && friendLinePartsFanLX(item->text()).friendRecord)
             ++visible;
     }
     if (auto *current = friendListFanLX->currentItem(); current && current->isHidden()) {
@@ -858,8 +1027,9 @@ void FriendPageFanLX::applyFriendFilterFanLX() {
         friendListFanLX->blockSignals(false);
     }
     const bool loggedIn = controllerFanLX->opened() && controllerFanLX->currentServiceLoggedIn();
-    const bool noRows = friendListFanLX->count() == 0;
-    if (homeListStackFanLX && homeEmptyFanLX && (noRows || visible == 0)) {
+    const bool noRows = friendTotal == 0 && pendingIncomingFanLX.isEmpty() && pendingTemporaryFanLX.isEmpty();
+    const bool filtering = !key.isEmpty();
+    if (homeListStackFanLX && homeEmptyFanLX && (noRows || (filtering && visible == 0))) {
         homeListStackFanLX->setCurrentWidget(homeEmptyFanLX);
         if (noRows && !loggedIn) {
             homeEmptyFanLX->setError(false);
@@ -893,6 +1063,13 @@ void FriendPageFanLX::updateFriendDetailFanLX() {
         remarkNavButtonFanLX->setEnabled(canEdit);
     if (detailCommonButtonFanLX)
         detailCommonButtonFanLX->setEnabled(canEdit);
+    if (chatButtonFanLX)
+        chatButtonFanLX->setEnabled(canEdit);
+    for (auto *button : {narrowChatButtonFanLX, narrowRemarkButtonFanLX, narrowCommonButtonFanLX,
+                         narrowRemoveButtonFanLX}) {
+        if (button)
+            button->setEnabled(canEdit);
+    }
     QString rowText;
     if (!peer.isEmpty() && friendListFanLX) {
         for (int index = 0; index < friendListFanLX->count(); ++index) {
@@ -908,9 +1085,8 @@ void FriendPageFanLX::updateFriendDetailFanLX() {
     if (detailAvatarFanLX)
         detailAvatarFanLX->showPeer(peer, friendAvatarTextFanLX(parts));
     if (detailRemarkFanLX) {
-        detailRemarkFanLX->setText(peer.isEmpty() ? QStringLiteral("选择一位好友查看详情")
-                                                  : (parts.remark.isEmpty() ? peer : parts.remark));
-        detailRemarkFanLX->setAlignment(peer.isEmpty() ? Qt::AlignCenter : Qt::AlignLeft | Qt::AlignVCenter);
+        detailRemarkFanLX->setText(parts.remark.isEmpty() ? peer : parts.remark);
+        detailRemarkFanLX->setAlignment(Qt::AlignHCenter);
         detailRemarkFanLX->setProperty("muted", peer.isEmpty() ? QStringLiteral("true") : QStringLiteral("false"));
         polishPropertyFanLX(detailRemarkFanLX);
     }
@@ -923,6 +1099,9 @@ void FriendPageFanLX::updateFriendDetailFanLX() {
         detailTagFanLX->setText(parts.tag);
         detailTagFanLX->setVisible(!parts.tag.isEmpty());
     }
+    if (listHintFanLX && !peer.isEmpty() && loggedIn)
+        listHintFanLX->hide();
+    updateDetailPlacementFanLX();
 }
 
 void FriendPageFanLX::confirmRemoveFriendFanLX(const QString &peer) {

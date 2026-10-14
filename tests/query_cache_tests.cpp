@@ -30,13 +30,41 @@ int main() {
     {
         MemoryPoolFanLX<PoolProbeFanLX, 1> pool;
         rejectedFanLX([&] { pool.create(&live, true); });
+        assert(pool.blocks() == 1 && pool.constructions() == 0 && pool.reuses() == 0 && pool.live() == 0);
         auto *probe = pool.create(&live);
         assert(reinterpret_cast<std::uintptr_t>(probe) % 128 == 0);
-        assert(pool.blocks() == 1 && live == 1);
-        pool.destroy(probe);
+        assert(alignof(PoolProbeFanLX) == 128);
+        assert(pool.blocks() == 1 && pool.constructions() == 1 && live == 1);
+        auto *misaligned = reinterpret_cast<PoolProbeFanLX *>(reinterpret_cast<std::byte *>(probe) - 1);
+        assert(!pool.destroy(misaligned));
+        assert(live == 1 && pool.rejectedDestroys() == 1);
+        assert(pool.destroy(probe));
+        assert(live == 0 && pool.live() == 0);
+        assert(!pool.destroy(probe)); // 重复归还不二次析构，也不改空闲链表计数。
+        assert(live == 0 && pool.live() == 0 && pool.rejectedDestroys() == 2);
+        assert(!pool.destroy(nullptr));
+        PoolProbeFanLX outsider(&live);
+        assert(!pool.destroy(&outsider));
+        assert(live == 1 && pool.rejectedDestroys() == 4);
         pool.create(&live); // 测试池析构清理仍存活对象。
     }
     assert(live == 0);
+    {
+        MemoryPoolFanLX<PoolProbeFanLX, 2> sized;
+        PoolProbeFanLX *kept[5] = {};
+        for (int i = 0; i < 5; ++i)
+            kept[i] = sized.create(&live);
+        assert(sized.blocks() == 3 && sized.blockAllocations() == 3);
+        assert(sized.constructions() == 5 && sized.reuses() == 0 && sized.live() == 5 && sized.peakLive() == 5);
+        assert(live == 5);
+        for (auto *item : kept)
+            assert(sized.destroy(item));
+        assert(sized.live() == 0 && live == 0);
+        auto *reused = sized.create(&live);
+        assert(sized.reuses() == 1 && sized.blocks() == 3 && sized.constructions() == 6);
+        assert(sized.reservedBytes() >= sized.blocks() * 2 * sizeof(PoolProbeFanLX));
+        assert(sized.destroy(reused) && live == 0);
+    }
     // 单路由 2Q 两区独立：扫描 Buffer 不挤出 Main，Main 满后直接淘汰。
     LruCacheFanLX<int, int> two(8, 800);
     for (int i = 0; i < 7; ++i) { assert(two.put(i, i, 100)); assert(two.get(i) == i); }
@@ -88,9 +116,21 @@ int main() {
     // 缓存结果池真正被使用，超容量扫描后槽位复用，clear 归还对象。
     QueryCacheFanLX poolCache(8, 8000);
     for (int i = 0; i < 1000; ++i) poolCache.put(std::to_string(i), {"中文结果"});
-    assert(poolCache.metrics().poolCreates == 1000);
-    assert(poolCache.metrics().poolBlocks == 1);
-    poolCache.clear(); assert(poolCache.metrics().entries == 0);
+    const auto pooled = poolCache.metrics();
+    assert(pooled.poolCreates == 1000);
+    assert(pooled.poolBlocks == 1);
+    assert(pooled.poolReuses > 0 && pooled.poolReuses < pooled.poolCreates);
+    assert(pooled.poolCreates - pooled.poolReuses <= 64);
+    assert(pooled.entries <= 8 && pooled.poolLive == pooled.entries);
+    assert(pooled.poolPeakLive >= pooled.poolLive && pooled.poolReservedBytes > 0);
+    poolCache.clear();
+    assert(poolCache.metrics().entries == 0);
+    assert(poolCache.metrics().poolLive == 0);
+    assert(poolCache.metrics().poolBlocks == 1); // 空闲槽位不触发整块释放。
+    QueryCacheFanLX closed(0, 0);
+    closed.put("k", {"不会当成业务成功或失败"});
+    assert(!closed.get("k"));
+    assert(closed.metrics().puts == 0 && closed.metrics().poolLive == 0);
 
     const auto directory = std::filesystem::temp_directory_path() /
         ("fanlx-query-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));

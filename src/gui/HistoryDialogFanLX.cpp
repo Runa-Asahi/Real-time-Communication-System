@@ -133,9 +133,13 @@ HistoryDialogFanLX::HistoryDialogFanLX(QWidget *parent) : QDialog(parent) {
     grid->addWidget(fieldLabelFanLX(QStringLiteral("每页条数"), filterCard), 1, 2);
     grid->addWidget(pageSpinFanLX, 1, 3, Qt::AlignLeft);
     grid->addWidget(timeCheckFanLX, 2, 1, 1, 3);
-    grid->addWidget(fieldLabelFanLX(QStringLiteral("起始时间"), filterCard), 3, 0);
+    auto *fromLabel = fieldLabelFanLX(QStringLiteral("起始时间"), filterCard);
+    fromLabel->setProperty("timeBound", QStringLiteral("from"));
+    auto *toLabel = fieldLabelFanLX(QStringLiteral("结束时间"), filterCard);
+    toLabel->setProperty("timeBound", QStringLiteral("to"));
+    grid->addWidget(fromLabel, 3, 0);
     grid->addWidget(fromEditFanLX, 3, 1);
-    grid->addWidget(fieldLabelFanLX(QStringLiteral("结束时间"), filterCard), 3, 2);
+    grid->addWidget(toLabel, 3, 2);
     grid->addWidget(toEditFanLX, 3, 3);
     auto *hint = new QLabel(
         QStringLiteral("关键词按字面内容匹配，% 和 _ 不作为通配符。时间以服务器 UTC 为准；未勾选时间范围时，起止时间不会提交。"),
@@ -270,6 +274,7 @@ HistoryDialogFanLX::HistoryDialogFanLX(QWidget *parent) : QDialog(parent) {
         setSummary(QStringLiteral("查询已取消。可以修改条件后重新查询。"));
     });
     connect(timeCheckFanLX, &QCheckBox::toggled, this, [this](bool) { syncTimeEditorsEnabledFanLX(); });
+    syncTimeEditorsEnabledFanLX();
     connect(copy, &QAction::triggered, this, &HistoryDialogFanLX::copySelectedFanLX);
     connect(this, &QDialog::finished, this, [this] {
         if (searchInFlightFanLX) {
@@ -286,7 +291,7 @@ HistoryDialogFanLX::HistoryDialogFanLX(QWidget *parent) : QDialog(parent) {
 
 void HistoryDialogFanLX::applyStyleFanLX() {
     setStyleSheet(QStringLiteral(
-        "QDialog#historyDialogFanLX { background:#f3f5f8; color:#1f2329; font-size:13px; }"
+        "QDialog#historyDialogFanLX { background:#F6F7F9; color:#1f2329; font-size:13px; }"
         "QDialog#historyDialogFanLX QLabel#historyTitle { font-size:20px; font-weight:600; color:#1f2329; }"
         "QDialog#historyDialogFanLX QLabel#historyResultTitle { font-size:15px; font-weight:600; color:#1f2329; }"
         "QDialog#historyDialogFanLX QLabel#historySubtitle,"
@@ -306,9 +311,9 @@ void HistoryDialogFanLX::applyStyleFanLX() {
         "QDialog#historyDialogFanLX QLineEdit:focus,"
         "QDialog#historyDialogFanLX QComboBox:focus,"
         "QDialog#historyDialogFanLX QDateTimeEdit:focus,"
-        "QDialog#historyDialogFanLX QSpinBox:focus { border:1px solid #2f6fed; }"
+        "QDialog#historyDialogFanLX QSpinBox:focus { border:1px solid #2563EB; }"
         "QDialog#historyDialogFanLX QLineEdit:disabled,"
-        "QDialog#historyDialogFanLX QDateTimeEdit:disabled { background:#f3f5f8; color:#8a94a3; }"
+        "QDialog#historyDialogFanLX QDateTimeEdit:disabled { background:#F6F7F9; color:#8a94a3; }"
         "QDialog#historyDialogFanLX QComboBox::drop-down, QDialog#historyDialogFanLX QDateTimeEdit::drop-down {"
         "  border:none; width:22px; }"
         "QDialog#historyDialogFanLX QComboBox::down-arrow, QDialog#historyDialogFanLX QDateTimeEdit::down-arrow {"
@@ -319,17 +324,17 @@ void HistoryDialogFanLX::applyStyleFanLX() {
         "  background:#ffffff; color:#1f2329; }"
         "QDialog#historyDialogFanLX QPushButton:hover { background:#f7f9fc; }"
         "QDialog#historyDialogFanLX QPushButton:pressed { background:#eef1f6; }"
-        "QDialog#historyDialogFanLX QPushButton:disabled { color:#8a94a3; background:#f3f5f8; }"
+        "QDialog#historyDialogFanLX QPushButton:disabled { color:#8a94a3; background:#F6F7F9; }"
         "QDialog#historyDialogFanLX QPushButton#historySearch {"
-        "  background:#2f6fed; border:1px solid #2f6fed; color:#ffffff; font-weight:600; }"
-        "QDialog#historyDialogFanLX QPushButton#historySearch:hover { background:#2961d6; border-color:#2961d6; }"
-        "QDialog#historyDialogFanLX QPushButton#historySearch:pressed { background:#2253ba; border-color:#2253ba; }"
+        "  background:#2563EB; border:1px solid #2563EB; color:#ffffff; font-weight:600; }"
+        "QDialog#historyDialogFanLX QPushButton#historySearch:hover { background:#1D4ED8; border-color:#1D4ED8; }"
+        "QDialog#historyDialogFanLX QPushButton#historySearch:pressed { background:#1E40AF; border-color:#1E40AF; }"
         "QDialog#historyDialogFanLX QPushButton#historyCancel {"
         "  color:#9a4d3a; border:1px solid #e7c7bc; background:#ffffff; }"
         "QDialog#historyDialogFanLX QPushButton#historyCancel:hover { background:#fff6f3; }"
         "QDialog#historyDialogFanLX QTableWidget {"
         "  background:#ffffff; border:none; alternate-background-color:#f8fafc;"
-        "  selection-background-color:#eaf1fe; selection-color:#1f2329; }"
+        "  selection-background-color:#E8EFFD; selection-color:#1f2329; }"
         "QDialog#historyDialogFanLX QHeaderView::section {"
         "  background:#f7f9fc; color:#5b6472; border:none; border-bottom:1px solid #e3e7ed;"
         "  padding:6px 8px; font-weight:600; }"));
@@ -345,6 +350,13 @@ void HistoryDialogFanLX::syncTimeEditorsEnabledFanLX() {
     const auto enabled = timeCheckFanLX->isChecked();
     fromEditFanLX->setEnabled(enabled);
     toEditFanLX->setEnabled(enabled);
+    fromEditFanLX->setVisible(enabled);
+    toEditFanLX->setVisible(enabled);
+    for (auto *label : findChildren<QLabel *>(QStringLiteral("historyField"))) {
+        const auto bound = label->property("timeBound").toString();
+        if (bound == QStringLiteral("from") || bound == QStringLiteral("to"))
+            label->setVisible(enabled);
+    }
 }
 
 void HistoryDialogFanLX::showStatusPageFanLX(const QString &title, const QString &detail) {

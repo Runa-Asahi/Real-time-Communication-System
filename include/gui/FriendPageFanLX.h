@@ -4,9 +4,11 @@
 
 class QComboBox;
 class QLabel;
+class QFrame;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QResizeEvent;
 class QShowEvent;
 class QStackedWidget;
 
@@ -38,8 +40,15 @@ class FriendPageFanLX : public QWidget {
     // 从服务端重新读取好友申请与临时会话（打开申请页、收到好友动态时调用）。
     void refreshRequestsFanLX();
 
+  signals:
+    // temporary 为真时打开临时会话，否则按好友单聊打开。主窗口负责切到聊天页。
+    void chatWithPeerFanLX(const QString &peer, bool temporary);
+    // 收到的待处理申请数，供左侧「好友」导航画角标。0 表示没有。
+    void incomingRequestsChangedFanLX(int count);
+
   protected:
     void showEvent(QShowEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
   private:
     QWidget *buildHomeFanLX();
@@ -59,6 +68,10 @@ class FriendPageFanLX : public QWidget {
     void updateRequestActionsFanLX();
     void setRequestSegmentFanLX(int index);
     void syncFriendActionsFanLX();
+    void rebuildFriendListFanLX();
+    void updateDetailPlacementFanLX();
+    void activateFriendRowFanLX();
+    QString selectedFriendRowFanLX() const;
     FriendPageHeaderFanLX *installFriendHeaderFanLX(int index, const QString &title);
 
     DomainControllerFanLX *controllerFanLX = nullptr;
@@ -118,6 +131,17 @@ class FriendPageFanLX : public QWidget {
 
     QLineEdit *searchEditFanLX = nullptr;
     QLabel *homeTitleFanLX = nullptr;
+    QLabel *homeCountFanLX = nullptr;
+    QFrame *detailPanelFanLX = nullptr;
+    QWidget *narrowActionsFanLX = nullptr;
+    QPushButton *chatButtonFanLX = nullptr;
+    QPushButton *narrowChatButtonFanLX = nullptr;
+    QPushButton *narrowRemarkButtonFanLX = nullptr;
+    QPushButton *narrowCommonButtonFanLX = nullptr;
+    QPushButton *narrowRemoveButtonFanLX = nullptr;
+    QStringList pendingIncomingFanLX;
+    QStringList pendingTemporaryFanLX;
+    QString pendingServiceFanLX;
     QStackedWidget *homeListStackFanLX = nullptr;
     FriendEmptyStateFanLX *homeEmptyFanLX = nullptr;
     QLabel *requestBadgeFanLX = nullptr;

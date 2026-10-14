@@ -4,7 +4,9 @@
 #include "db/DatabaseWorkerFanLX.h"
 #include "db/SqliteChatRepositoryFanLX.h"
 #include "infra/UtcClockFanLX.h"
+#include "network/DirectLinkFanLX.h"
 #include "network/MessageCodecFanLX.h"
+#include "network/P2pProtocolFanLX.h"
 #include "network/TcpPeerFanLX.h"
 #include "persistence/AtomicFileWriterFanLX.h"
 #include "persistence/DataDirectoryLockFanLX.h"
@@ -19,6 +21,7 @@
 #include <map>
 #include <mutex>
 #include <random>
+#include <iostream>
 #include <set>
 #include <system_error>
 #include <thread>
@@ -131,6 +134,21 @@ struct ImClientFanLX::Impl {
 
     std::atomic<std::int64_t> nextQueryId{1};
     std::atomic<std::int64_t> nextCommandId{1};
+    bool preferDirect = true;
+    DirectLinkFanLX direct;
+    struct ArmedFanLX {
+        bool haveMeta = false;
+        bool haveData = false;
+        std::string hash;
+        std::string data;
+        ChatMessageFanLX meta;
+    };
+    std::map<std::uint64_t, ArmedFanLX> armed;
+    std::map<std::string, std::string> outgoingBodies;
+    std::deque<std::string> outgoingOrder;
+    std::set<std::uint64_t> ackQueued;
+    mutable std::mutex statsMutex;
+    DirectClientStatsFanLX clientStats;
     std::atomic<bool> stop{false}, active{false}, reset{false};
     mutable std::mutex errorMutex;
     std::string lastError;
@@ -142,9 +160,11 @@ struct ImClientFanLX::Impl {
     std::thread worker;
 
     Impl(std::string ip, unsigned short p, std::string user, std::string secret,
-         const std::filesystem::path &dir, bool chatDbEnabled, std::string channelService)
+         const std::filesystem::path &dir, bool chatDbEnabled, std::string channelService,
+         bool directPreferred)
         : host(std::move(ip)), account(std::move(user)), password(std::move(secret)),
-          service(std::move(channelService)), port(p), directory(dir), sqliteEnabled(chatDbEnabled) {
+          service(std::move(channelService)), port(p), directory(dir), sqliteEnabled(chatDbEnabled),
+          preferDirect(directPreferred) {
         if (account.empty() || !port || password.empty())
             throw std::invalid_argument("IM 连接参数缺失");
         if (service != "QQ" && service != "Wechat" && service != "Weibo")
@@ -401,7 +421,12 @@ struct ImClientFanLX::Impl {
             bool delivery = false;
             {
                 std::lock_guard<std::mutex> guard(correlationMutex);
-                delivery = pendingDeliveries.erase(event.commandId) > 0;
+                const auto pending = pendingDeliveries.find(event.commandId);
+                if (pending != pendingDeliveries.end()) {
+                    delivery = true;
+                    ackQueued.erase(pending->second.messageId);
+                    pendingDeliveries.erase(pending);
+                }
                 pendingSends.erase(event.commandId);
             }
             // 投递失败不是“刚发出的那条被拒绝”。messageId 内容冲突表示本地编号和服务端
@@ -547,6 +572,11 @@ struct ImClientFanLX::Impl {
         if (!message.messageId || !message.conversationSeq || message.sender.empty() ||
             (message.scope == "direct" && message.sender != account && message.recipient != account))
             throw std::runtime_error("投递目标/序号非法");
+        {
+            std::lock_guard<std::mutex> guard(correlationMutex);
+            if (!ackQueued.insert(message.messageId).second)
+                return; // 同一连接里直连和中转可能各到一次，只确认一次。
+        }
         DbCommandFanLX command;
         command.kind = DbCommandFanLX::KindFanLX::AppendDelivered;
         command.row.messageId = static_cast<std::int64_t>(message.messageId);
@@ -562,6 +592,10 @@ struct ImClientFanLX::Impl {
         const auto id = postCommandFanLX(command);
         if (!database->tryPost(command)) {
             // 未落库就不回 ACK：服务器会在重连后重放，不静默丢消息。
+            {
+                std::lock_guard<std::mutex> guard(correlationMutex);
+                ackQueued.erase(message.messageId);
+            }
             error("数据库命令队列已满，投递未落库（未回 ACK）");
             return;
         }
@@ -590,6 +624,8 @@ struct ImClientFanLX::Impl {
         if (!active || !message.messageId || !message.conversationSeq || message.sender.empty() ||
             (message.scope == "direct" && message.sender != account && message.recipient != account))
             throw std::runtime_error("投递目标/序号非法");
+        bool storedNow = false;
+        bool needAck = false;
         {
             std::lock_guard<std::mutex> guard(jsonMutex);
             const auto key = std::to_string(message.messageId);
@@ -603,12 +639,21 @@ struct ImClientFanLX::Impl {
                 if (message.conversationSeq > cursor)
                     next["cursors"][conversation] = message.conversationSeq;
                 socketIoFanLX::commit(directory, legacyDb, std::move(next));
+                storedNow = true;
             }
         }
-        ImClientEventFanLX event;
-        event.kind = ImClientEventFanLX::KindFanLX::Delivered;
-        event.sequence = static_cast<std::int64_t>(message.conversationSeq);
-        pushEvent(std::move(event));
+        {
+            std::lock_guard<std::mutex> guard(correlationMutex);
+            needAck = ackQueued.insert(message.messageId).second;
+        }
+        if (storedNow) {
+            ImClientEventFanLX event;
+            event.kind = ImClientEventFanLX::KindFanLX::Delivered;
+            event.sequence = static_cast<std::int64_t>(message.conversationSeq);
+            pushEvent(std::move(event));
+        }
+        if (!needAck)
+            return; // 重连后的重放仍会 ACK；同一次连接里的重复投递不会。
         CommandFanLX command;
         command.kind = CommandFanLX::KindFanLX::Send;
         command.message = socketIoFanLX::control("ACK");
@@ -616,6 +661,146 @@ struct ImClientFanLX::Impl {
         // 与 SQLite 后端一致：ACK 必须携带会话序号，服务端才能推进投递游标。
         command.message.conversationSeq = message.conversationSeq;
         pushCommand(std::move(command));
+    }
+
+    void bumpStatFanLX(std::size_t DirectClientStatsFanLX::*field) {
+        std::lock_guard<std::mutex> guard(statsMutex);
+        ++(clientStats.*field);
+    }
+    void rememberBodyFanLX(const std::string &requestId, const std::string &text) {
+        if (requestId.empty() || outgoingBodies.count(requestId))
+            return;
+        outgoingBodies.emplace(requestId, text);
+        outgoingOrder.push_back(requestId);
+        while (outgoingOrder.size() > 64) {
+            outgoingBodies.erase(outgoingOrder.front());
+            outgoingOrder.pop_front();
+        }
+    }
+    void finishDirectFanLX(std::uint64_t messageId) {
+        auto found = armed.find(messageId);
+        if (found == armed.end() || !found->second.haveMeta || !found->second.haveData)
+            return;
+        if (p2pFanLX::hashBodyFanLX(found->second.data) != found->second.hash) {
+            found->second.haveData = false;
+            found->second.data.clear();
+            return; // 哈希不符就丢掉直连正文，等服务器中转补发。
+        }
+        auto deliver = found->second.meta;
+        deliver.type = "DELIVER";
+        deliver.scope = "direct";
+        deliver.text = found->second.data;
+        armed.erase(found);
+        bumpStatFanLX(&DirectClientStatsFanLX::p2pReceived);
+        if (sqliteReady)
+            handleDelivered(deliver);
+        else
+            legacyDeliveredFanLX(deliver);
+    }
+    void noteArmFanLX(const ChatMessageFanLX &message) {
+        if (!message.messageId)
+            return;
+        auto &slot = armed[message.messageId];
+        slot.haveMeta = true;
+        slot.hash = message.text;
+        slot.meta = message;
+        finishDirectFanLX(message.messageId);
+    }
+    void noteDataFanLX(const ChatMessageFanLX &message) {
+        if (!message.messageId)
+            return;
+        auto &slot = armed[message.messageId];
+        slot.haveData = true;
+        slot.data = message.text;
+        if (!slot.haveMeta) {
+            slot.meta.sender = message.sender;
+            slot.meta.recipient = message.recipient;
+            slot.meta.requestId = message.requestId;
+            slot.meta.messageId = message.messageId;
+            slot.meta.conversationSeq = message.conversationSeq;
+            slot.meta.acceptedAtUtc = message.acceptedAtUtc;
+            slot.meta.service = service;
+        }
+        finishDirectFanLX(message.messageId);
+    }
+    void notePushFanLX(const ChatMessageFanLX &message) {
+        const auto found = outgoingBodies.find(message.requestId);
+        if (found == outgoingBodies.end()) {
+            bumpStatFanLX(&DirectClientStatsFanLX::pushMisses);
+            return;
+        }
+        if (p2pFanLX::hashBodyFanLX(found->second) != message.text)
+            return;
+        auto data = socketIoFanLX::control(p2pFanLX::dataTypeFanLX);
+        data.sender = account;
+        data.recipient = message.recipient;
+        data.service = service;
+        data.scope = "direct";
+        data.requestId = message.requestId;
+        data.messageId = message.messageId;
+        data.conversationSeq = message.conversationSeq;
+        data.text = found->second;
+        data.acceptedAtUtc = message.acceptedAtUtc;
+        data.protocolVersion = message.protocolVersion;
+        if (!direct.sendData(message.recipient, data))
+            bumpStatFanLX(&DirectClientStatsFanLX::pushMisses);
+        else
+            bumpStatFanLX(&DirectClientStatsFanLX::p2pSent);
+    }
+    void announceDirectFanLX(TcpPeerFanLX &server) {
+        direct.bindIdentity(account, service);
+        if (!direct.listening())
+            direct.start();
+        auto hello = socketIoFanLX::control(p2pFanLX::helloTypeFanLX);
+        hello.sender = account;
+        hello.service = service;
+        hello.text = direct.advertisedEndpoint();
+        server.trySend(hello);
+        if (!direct.advertisedEndpoint().empty())
+            return;
+        bumpStatFanLX(&DirectClientStatsFanLX::listenFailures);
+        ImClientEventFanLX notice;
+        notice.kind = ImClientEventFanLX::KindFanLX::Notice;
+        notice.detail = "本机直连端口监听失败，单聊将通过服务器中转。若防火墙拦截入站连接，允许本程序或继续使用中转即可。";
+        pushEvent(std::move(notice));
+        std::cerr << "fanlx-p2p client route=RelayOnly reason=listen\n";
+    }
+    void pumpDirectFanLX(TcpPeerFanLX &server) {
+        if (!preferDirect)
+            return;
+        for (int budget = 0; budget < 16; ++budget) {
+            auto event = direct.poll();
+            if (!event)
+                break;
+            if (event->kind == DirectLinkFanLX::EventFanLX::KindFanLX::Ready) {
+                auto ready = socketIoFanLX::control(p2pFanLX::readyTypeFanLX);
+                ready.sender = account;
+                ready.recipient = event->peer;
+                ready.requestId = event->ticket;
+                ready.service = service;
+                server.trySend(ready);
+                bumpStatFanLX(&DirectClientStatsFanLX::directReady);
+                ImClientEventFanLX notice;
+                notice.kind = ImClientEventFanLX::KindFanLX::Notice;
+                notice.detail = "与 " + event->peer + " 的单聊已改为点对点直连";
+                pushEvent(std::move(notice));
+            } else if (event->kind == DirectLinkFanLX::EventFanLX::KindFanLX::Failed ||
+                       event->kind == DirectLinkFanLX::EventFanLX::KindFanLX::Closed) {
+                auto fail = socketIoFanLX::control(p2pFanLX::failTypeFanLX);
+                fail.sender = account;
+                fail.recipient = event->peer;
+                fail.requestId = event->ticket;
+                fail.text = event->detail == "timeout" || event->detail == "connect" ||
+                                    event->detail == "rejected" || event->detail == "closed"
+                                ? event->detail
+                                : "fail";
+                fail.service = service;
+                server.trySend(fail);
+                bumpStatFanLX(&DirectClientStatsFanLX::directFail);
+            } else if (event->kind == DirectLinkFanLX::EventFanLX::KindFanLX::Data) {
+                noteDataFanLX(event->message);
+            }
+        }
     }
 
     void received(TcpPeerFanLX &peer, const ChatMessageFanLX &message) {
@@ -628,10 +813,21 @@ struct ImClientFanLX::Impl {
             else
                 legacyAcceptedFanLX(message);
         } else if (message.type == "DELIVER") {
+            armed.erase(message.messageId);
             if (sqliteReady)
                 handleDelivered(message);
             else
                 legacyDeliveredFanLX(message);
+        } else if (message.type == p2pFanLX::armTypeFanLX) {
+            noteArmFanLX(message);
+        } else if (message.type == p2pFanLX::pushTypeFanLX) {
+            notePushFanLX(message);
+        } else if (message.type == p2pFanLX::offerTypeFanLX) {
+            direct.connectPeer(message.recipient, message.requestId, message.text);
+        } else if (message.type == p2pFanLX::expectTypeFanLX) {
+            direct.expect(message.recipient, message.requestId);
+        } else if (message.type == p2pFanLX::failTypeFanLX) {
+            direct.closePeer(message.recipient.empty() ? message.sender : message.recipient);
         } else if (message.type == "DIRECTORY_LIST") {
             ImClientEventFanLX out;
             out.kind = ImClientEventFanLX::KindFanLX::Directory;
@@ -665,6 +861,8 @@ struct ImClientFanLX::Impl {
             out.detail = message.text;
             pushEvent(std::move(out));
         } else if (message.type == "PRESENCE" || message.type == "SYNC_END") {
+            if (message.type == "PRESENCE" && message.text == "offline")
+                direct.closePeer(message.sender);
             ImClientEventFanLX out;
             out.kind = message.type == "PRESENCE" ? ImClientEventFanLX::KindFanLX::Presence
                                                   : ImClientEventFanLX::KindFanLX::SyncEnd;
@@ -728,6 +926,8 @@ struct ImClientFanLX::Impl {
                 outbox.push_back(std::move(entry.second));
         }
         for (const auto &message : outbox) {
+            if (message.type == "SEND")
+                rememberBodyFanLX(message.requestId, message.text);
             if (sentRequests.count(message.requestId))
                 continue;
             bool queued = false;
@@ -750,7 +950,15 @@ struct ImClientFanLX::Impl {
         while (!stop) {
             try {
                 reset = false;
-                auto peer = TcpPeerFanLX::connect(host, port, std::chrono::seconds(2));                auto login = socketIoFanLX::control("LOGIN");
+                auto peer = TcpPeerFanLX::connect(host, port, std::chrono::seconds(2));
+                direct.closePeers();
+                {
+                    std::lock_guard<std::mutex> guard(correlationMutex);
+                    ackQueued.clear();
+                }
+                armed.clear();
+                bool directHelloSent = false;
+                auto login = socketIoFanLX::control("LOGIN");
                 login.sender = account;
                 login.text = password;
                 // 登录帧带上本通道的服务名：服务端按 (服务, 账号) 认证并选择该服务的好友/群分区。
@@ -768,6 +976,11 @@ struct ImClientFanLX::Impl {
                     }
                     if (active) {
                         backoff = 100;
+                        if (preferDirect && !directHelloSent) {
+                            announceDirectFanLX(*peer);
+                            directHelloSent = true;
+                        }
+                        pumpDirectFanLX(*peer);
                         // 首次收到 LOGIN_OK 后才准备工作存储：需要服务器实例号才能确定库归属。
                         // （初始化可能较慢，因此只发生在工作线程里，界面线程不会被阻塞。）
                         if (!storageAttempted)
@@ -779,6 +992,7 @@ struct ImClientFanLX::Impl {
                         while (popCommand(command)) {
                             if (command.kind == CommandFanLX::KindFanLX::Send &&
                                 command.message.type == "SEND") {
+                                rememberBodyFanLX(command.message.requestId, command.message.text);
                                 if (sentRequests.count(command.message.requestId))
                                     continue;
                                 sentRequests.insert(command.message.requestId);
@@ -862,15 +1076,15 @@ struct ImClientFanLX::Impl {
 
 ImClientFanLX::ImClientFanLX(std::string host, unsigned short port, std::string account,
                              std::string password, const std::filesystem::path &directory,
-                             std::string service)
+                             std::string service, bool preferDirect)
     : implFanLX(std::make_unique<Impl>(std::move(host), port, std::move(account), std::move(password),
-                                       directory, false, std::move(service))) {}
+                                       directory, false, std::move(service), preferDirect)) {}
 
 ImClientFanLX::ImClientFanLX(std::string host, unsigned short port, std::string account,
                              std::string password, const std::filesystem::path &directory,
-                             ChatDbConfigFanLX chatDb, std::string service)
+                             ChatDbConfigFanLX chatDb, std::string service, bool preferDirect)
     : implFanLX(std::make_unique<Impl>(std::move(host), port, std::move(account), std::move(password),
-                                       directory, chatDb.enabled, std::move(service))) {}
+                                       directory, chatDb.enabled, std::move(service), preferDirect)) {}
 
 ImClientFanLX::~ImClientFanLX() = default;
 
@@ -1164,6 +1378,12 @@ std::string ImClientFanLX::storageBackend() const { return implFanLX->sqliteRead
 std::filesystem::path ImClientFanLX::dataDirectory() const { return implFanLX->directory; }
 std::size_t ImClientFanLX::queuedSendFrames() const { return 0; }
 bool ImClientFanLX::databaseReady() const { return implFanLX->sqliteReady; }
+ImClientFanLX::DirectClientStatsFanLX ImClientFanLX::directStats() const {
+    std::lock_guard<std::mutex> guard(implFanLX->statsMutex);
+    return implFanLX->clientStats;
+}
+unsigned short ImClientFanLX::directListenPort() const { return implFanLX->direct.listenPort(); }
+std::string ImClientFanLX::directEndpoint() const { return implFanLX->direct.advertisedEndpoint(); }
 
 // 账号登记：一次性短连接（连上 → REGISTER → 等 REGISTER_OK/ERROR → 关），
 // 不建聊天库、不写任何本地状态——登记的产物完全落在**服务端**的持久化账号库里。

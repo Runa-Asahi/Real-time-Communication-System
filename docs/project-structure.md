@@ -19,27 +19,28 @@ OOP/
 │   ├─ group/     (17)       群域：群策略族、群、成员、子群、申请/邀请、服务与快照
 │   ├─ infra/     ( 9)       基础设施：2Q/LRU-K、ARC、LFU、内存池、查询缓存与统计
 │   ├─ persistence/(16)      持久化：仓储接口、JSON 编解码、校验、原子写、目录锁、事务
-│   ├─ network/   (11)       网络：帧编解码、TcpPeer/监听、待发送缓冲、IM 客户端/服务端、客户端目录派生
+│   ├─ network/              网络：帧编解码、TcpPeer/监听、IM 客户端/服务端、DirectLinkFanLX、P2pProtocolFanLX
 │   ├─ db/        ( 8)       【扩展】聊天记录数据库：SQLite 封装、仓储、服务端消息库、迁移、DB 线程
 │   └─ gui/       (10)       【扩展】图形客户端：控制器、会话/消息模型、登录窗、历史窗、主窗口、领域门面、三个领域页面、注册对话框
 │
 ├─ src/                      实现（与 include 同层对应）
 │   ├─ persistence/(10)      含 NamedFilePublisherFanLX（具名文件原子发布）
-│   ├─ network/   ( 7)       MessageMailbox / TcpPeer / TcpListener / ImClient / ImServer
+│   ├─ network/              MessageMailbox / TcpPeer / TcpListener / ImClient / ImServer / DirectLinkFanLX
 │   ├─ db/        ( 7)       【扩展】SQLite 仓储、服务端消息库、迁移、数据库工作线程
 │   ├─ gui/       (11)       【扩展】控制器、模型、登录窗、历史窗、主窗口、领域门面、三个领域页面、注册对话框、GUI 入口
 │   ├─ ui/        ( 2)       控制台数字菜单（课程必做交付）
 │   └─ main.cpp              控制台程序入口（--demo / --init-demo / --menu / --im-* / --im-migrate）
 │
-├─ tests/         (10)       10 个测试源文件，共注册 14 项 CTest（基础版 11 项 = 10 项常规 + chat_history_performance，GUI 扩展 +3）
+├─ tests/                    含 p2p_tests.cpp。启用 GUI 时 CTest 比原先多一项 p2p_behavior
 │   ├─ network_tests.cpp     T14 协议与 TCP；`--im` 为 IM 长连接/离线/群/重启/ACK 用例
+│   ├─ p2p_tests.cpp         在线好友单聊直连与回退
 │   ├─ chat_history_tests.cpp【扩展】数据库 18 个用例（T20–T56）；`--perf` 为十万条测量
 │   ├─ gui_tests.cpp         【扩展】图形层 8 个用例（离屏，t60–t64、t66–t68；含微博通道 t68）
 │   ├─ gui_domain_tests.cpp  【扩展】领域页签用例（离屏，t70–t82）
 │   └─ cache/console/group/integration/persistence/query_cache_tests.cpp   原有域与集成回归
 │
 ├─ tools/         ( 1)       【扩展】gui_screenshot：三客户端真实收发 + 窗口离屏截图为 PNG
-├─ benchmarks/    ( 1)       cache_benchmark（固定种子性能基准）
+├─ benchmarks/    ( 2)       cache_benchmark（固定种子）；pool_benchmark（对象池与 new/delete 对照）
 ├─ scripts/       ( 4)       deploy-gui.ps1（Qt 运行依赖部署）、run-im-server.ps1/.bat（服务端启动；启动前自动重建旧格式数据目录）、verify-release.ps1
 ├─ third_party/
 │   ├─ nlohmann/json.hpp     JSON 库（v3.11.3，MIT，随源码离线提供）
@@ -224,12 +225,13 @@ powershell -File scripts/deploy-gui.ps1 -TargetDir build -QtBin "E:/Qt/6.11.1/mi
 
 ---
 
-## 5 测试清单（13 项 CTest）
+## 5 测试清单
 
 | 名称 | 可执行文件 | 覆盖 |
 | --- | --- | --- |
 | network_behavior | network_tests | T14 协议边界、拆包粘包、资源上限 |
 | im_behavior | network_tests --im | IM 长连接、离线投递、群增量、重启补发、双 ACK 丢失、幂等/伪造/权限、磁盘失败 |
+| p2p_behavior | p2p_tests | 在线好友单聊直连、回退、群与跨服务仍走中转。见 [hybrid-tcp.md](hybrid-tcp.md) |
 | integration_behavior | integration_tests | 跨域权限、事务、缓存对照、故障回归 |
 | smoke | fanlx_app --demo | 控制台确定性演示 D01–D08 |
 | cache_behavior | cache_tests | 2Q/ARC/LFU/内存池/好友域/统一登录 |
@@ -244,4 +246,4 @@ powershell -File scripts/deploy-gui.ps1 -TargetDir build -QtBin "E:/Qt/6.11.1/mi
 | gui_three_client_behavior | gui_screenshot | 三客户端单聊往返、群聊、截图、停止与重启历史恢复 |
 
 运行：`ctest --test-dir build -E performance`（默认）/ `ctest --test-dir build -L perf`（十万条测量）。
-基础版（不带 Qt）注册 11 项（10 项常规 + 数据库 `chat_history_performance` 性能项）；启用 GUI 后共注册 14 项、默认跑 13 项（实测 `ctest -E performance` **13/13 通过，约 32 秒**），上表末三行仅在 `-DFANLX_BUILD_GUI=ON` 时注册。本轮（第二轮：微博成为聊天通道）GUI 三项目标分别新增：微博通道与同号码双通道隔离（`gui_behavior` t68，同时按服务派生聊天目录）、演示种子两条好友关系与号码按服务唯一（`persistence_behavior`）、服务端迁移键带 `QQ|` 前缀（`chat_history_behavior` t53）。
+上表末三行只在 `-DFANLX_BUILD_GUI=ON` 时注册。`p2p_behavior` 在命令行构建里就有。2026-10-14 没有重跑整表；当次通过的项目和耗时写在 [hybrid-tcp.md](hybrid-tcp.md) 与 [progress.md](progress.md)。`gui_domain_behavior` 与 `gui_three_client_behavior` 这次没跑。

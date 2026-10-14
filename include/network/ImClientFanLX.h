@@ -59,11 +59,13 @@ class ImClientFanLX {
     // service：本连接所属的服务（"QQ" / "Wechat" / "Weibo"）。一条连接固定属于一个服务，
     // 服务端据此只在该服务的好友与群里鉴权和投递（微博只有好友、没有群）；
     // 微X 是上层登录身份，不承载聊天。缺省 "QQ" 保持既有调用方（测试 / 旧脚本）可用。
+    // preferDirect：在线好友单聊优先尝试本机 TCP 直连，失败自动回到服务器中转。
     ImClientFanLX(std::string host, unsigned short port, std::string account, std::string password,
-                  const std::filesystem::path &directory, std::string service = "QQ");
+                  const std::filesystem::path &directory, std::string service = "QQ",
+                  bool preferDirect = true);
     ImClientFanLX(std::string host, unsigned short port, std::string account, std::string password,
                   const std::filesystem::path &directory, ChatDbConfigFanLX chatDb,
-                  std::string service = "QQ");
+                  std::string service = "QQ", bool preferDirect = true);
     ~ImClientFanLX();
     ImClientFanLX(const ImClientFanLX &) = delete;
     ImClientFanLX &operator=(const ImClientFanLX &) = delete;
@@ -163,6 +165,19 @@ class ImClientFanLX {
     std::filesystem::path dataDirectory() const;
     std::size_t queuedSendFrames() const;
     bool databaseReady() const;
+
+    // 直连观测。listenPort 为 0 表示没有在监听（未启用或绑定失败）。
+    struct DirectClientStatsFanLX {
+        std::size_t listenFailures = 0;
+        std::size_t directReady = 0;
+        std::size_t directFail = 0;
+        std::size_t p2pSent = 0;
+        std::size_t p2pReceived = 0;
+        std::size_t pushMisses = 0;
+    };
+    DirectClientStatsFanLX directStats() const;
+    unsigned short directListenPort() const;
+    std::string directEndpoint() const;
 
   private:
     struct Impl;

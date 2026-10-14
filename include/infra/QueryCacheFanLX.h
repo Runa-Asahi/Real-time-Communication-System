@@ -53,7 +53,11 @@ class QueryCacheFanLX {
         auto result = metricsFanLX;
         result.entries = cacheFanLX.size(); result.bytes = cacheFanLX.bytes();
         result.poolBlocks = poolFanLX.blocks(); result.poolReservedBytes = poolFanLX.reservedBytes();
-        result.poolCreates = poolFanLX.allocations();
+        result.poolCreates = poolFanLX.constructions();
+        result.poolReuses = poolFanLX.reuses();
+        result.poolLive = poolFanLX.live();
+        result.poolPeakLive = poolFanLX.peakLive();
+        result.poolRejectedDestroys = poolFanLX.rejectedDestroys();
         return result;
     }
 };

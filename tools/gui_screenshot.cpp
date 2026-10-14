@@ -9,7 +9,9 @@
 #include "gui/ChatControllerFanLX.h"
 #include "gui/DomainControllerFanLX.h"
 #include "gui/HistoryDialogFanLX.h"
+#include "gui/LoginDialogFanLX.h"
 #include "gui/MainWindowFanLX.h"
+#include "gui/RegisterDialogFanLX.h"
 #include "friend/IdentityResolverFanLX.h"
 #include "network/ImServerFanLX.h"
 #include "persistence/DemoSeedFanLX.h"
@@ -383,6 +385,20 @@ int main(int argc, char **argv) {
                            .arg(controllers[0]->messages().size()));
     QCoreApplication::processEvents();
     saveWindow(history, outDir / "03-history-query.png");
+
+    fanlxGui::LoginDialogFanLX login;
+    saveWindow(login, outDir / "07-login.png");
+    fanlxGui::RegisterDialogFanLX registerDialog(QString::fromStdWString((root / "domain").wstring()),
+                                                QStringLiteral("127.0.0.1"), static_cast<quint16>(port));
+    saveWindow(registerDialog, outDir / "08-register.png");
+    if (!windows.empty()) {
+        windows[0]->resize(1280, 800);
+        QCoreApplication::processEvents();
+        saveWindow(*windows[0], outDir / "09-chat-1280x800.png");
+        windows[0]->resize(1600, 900);
+        QCoreApplication::processEvents();
+        saveWindow(*windows[0], outDir / "10-chat-1600x900.png");
+    }
 
     // 7) 关闭流程：三个客户端都要能在时间预算内停止（不残留线程）。
     const auto stopStart = std::chrono::steady_clock::now();

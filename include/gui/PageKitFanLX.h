@@ -2,9 +2,9 @@
 // PageKitFanLX：三个领域页面（账号与服务 / 好友 / 群）共用的"首页 + 子页面跳转"小工具。
 // 首页只放概览与入口按钮，具体操作放进子页面，左上角统一有「‹ 返回」，避免所有控件挤在一屏。
 //
-// 配色：按钮 / 卡片 / 标题的颜色不写死在控件上，而是给控件打 role 属性，
-// 再由 applyAccent 按"当前服务"生成一份页面级样式表：QQ 蓝、微信绿、微博红、微X 紫，
-// 切换服务时整页换色，一眼看出自己在以哪个身份操作。
+// 配色：按钮 / 卡片 / 标题打 role 属性，颜色来自 AppThemeFanLX 这一套品牌色。
+// accentForService 只留给小型服务标识。切换服务不再给整页、全部按钮重新上色。
+#include "gui/AppThemeFanLX.h"
 #include <QColor>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -36,9 +36,10 @@ inline QString tint(const QColor &color, double ratio) {
 }
 } // namespace detail
 
-// 页面级样式表（按钮 / 卡片 / 分组框 / 列表 / 输入框共用同一套主题色）。
+// 页面级样式表。accentName 保留是为了不改调用点；整页不再跟随服务色。
 inline QString pageStyle(const QString &accentName) {
-    const QColor accent(accentName);
+    Q_UNUSED(accentName);
+    const QColor accent(theme::brand);
     const auto dark = accent.darker(120).name();
     const auto light = detail::tint(accent, 0.90);
     const auto soft = detail::tint(accent, 0.65);
@@ -51,9 +52,9 @@ inline QString pageStyle(const QString &accentName) {
                "border-left:4px solid %1;border-radius:8px;background:#ffffff;font-size:14px;}"
                "QPushButton[role=\"nav\"]:hover{background:%3;border-color:%1;}"
                "QPushButton[role=\"nav\"]:disabled{color:#9aa0a6;background:#f6f8fa;border-left-color:#c5ccd3;}"
-               "QPushButton[role=\"danger\"]{padding:4px 16px;border:1px solid #d93025;border-radius:6px;"
-               "color:#d93025;background:#ffffff;}"
-               "QPushButton[role=\"danger\"]:hover{background:#fdecea;}"
+               "QPushButton[role=\"danger\"]{padding:4px 16px;border:1px solid #DC2626;border-radius:6px;"
+               "color:#DC2626;background:#ffffff;}"
+               "QPushButton[role=\"danger\"]:hover{background:#FEE2E2;}"
                "QPushButton[role=\"back\"]{color:%1;padding:4px 8px;border:none;background:transparent;"
                "font-weight:600;}"
                "QPushButton[role=\"back\"]:hover{background:%3;border-radius:6px;}"
@@ -85,9 +86,10 @@ inline QString pageStyle(const QString &accentName) {
         .arg(accent.name(), dark, light, soft);
 }
 
-// 按服务给整页换色；样式表没变化时不重复设置（避免每次刷新都触发重绘）。
+// 装上统一的页面样式。service 只保留参数，避免调用点跟着改；不再按服务重绘整页。
 inline void applyAccent(QWidget *page, const QString &service) {
-    const auto style = pageStyle(accentForService(service));
+    Q_UNUSED(service);
+    const auto style = pageStyle(theme::brand);
     if (page->styleSheet() != style)
         page->setStyleSheet(style);
 }
@@ -109,7 +111,7 @@ inline QPushButton *primaryButton(const QString &text, QWidget *parent) {
     button->setProperty("role", QStringLiteral("primary"));
     button->setProperty("fanlxKind", QStringLiteral("primary"));
     button->setCursor(Qt::PointingHandCursor);
-    button->setMinimumHeight(34);
+    button->setMinimumHeight(theme::controlHeight);
     return button;
 }
 
@@ -119,7 +121,7 @@ inline QPushButton *dangerButton(const QString &text, QWidget *parent) {
     button->setProperty("role", QStringLiteral("danger"));
     button->setProperty("fanlxKind", QStringLiteral("danger"));
     button->setCursor(Qt::PointingHandCursor);
-    button->setMinimumHeight(34);
+    button->setMinimumHeight(theme::controlHeight);
     return button;
 }
 

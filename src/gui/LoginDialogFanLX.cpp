@@ -21,8 +21,8 @@ namespace fanlxGui {
 
 namespace {
 
-// 登录窗用微X的紫色作主题色（登录前还没有"当前服务"）。
-const QString kLoginAccentFanLX = kit::accentForService(QStringLiteral("微X"));
+// 登录前还没有当前服务。整窗使用全局品牌色，不再单独用微X紫色。
+const QString kLoginAccentFanLX = theme::brand;
 
 // 链接样式的扁平按钮：注册 / 服务器设置。
 QPushButton *linkButtonFanLX(const QString &text, QWidget *parent) {
@@ -43,12 +43,12 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     setFixedWidth(400);
     setStyleSheet(kit::pageStyle(kLoginAccentFanLX) +
-                  QStringLiteral("QDialog{background:#f7f9fb;}"
-                                 "QCheckBox{color:#5f6368;}"
-                                 "QLineEdit,QSpinBox,QComboBox{min-height:22px;}"));
+                  QStringLiteral("QDialog{background:#F6F7F9;}"
+                                 "QCheckBox{color:#5B6472;}"
+                                 "QLineEdit,QSpinBox,QComboBox{min-height:32px;}"));
 
     // ---- 顶部：标识 + 标题 ----
-    auto *logo = new QLabel(QStringLiteral("X"), this);
+    auto *logo = new QLabel(QStringLiteral("樊"), this);
     logo->setProperty("role", QStringLiteral("avatar"));
     logo->setFixedSize(56, 56);
     logo->setAlignment(Qt::AlignCenter);
@@ -86,7 +86,7 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     registerButtonFanLX = linkButtonFanLX(QStringLiteral("注册微X账号"), this);
     registerButtonFanLX->setToolTip(
         QStringLiteral("注册只创建微X账号；QQ / 微信 / 微博 在登录后于「开通管理」里自主开通"));
-    settingsToggleFanLX = linkButtonFanLX(QStringLiteral("服务器设置 ▾"), this);
+    settingsToggleFanLX = linkButtonFanLX(QStringLiteral("服务器设置"), this);
     auto *links = new QHBoxLayout();
     links->addWidget(registerButtonFanLX);
     links->addStretch(1);
@@ -173,7 +173,7 @@ void LoginDialogFanLX::fitHeightToContentsFanLX() {
 
 void LoginDialogFanLX::setSettingsVisibleFanLX(bool visible) {
     settingsFrameFanLX->setVisible(visible);
-    settingsToggleFanLX->setText(visible ? QStringLiteral("服务器设置 ▴") : QStringLiteral("服务器设置 ▾"));
+    settingsToggleFanLX->setText(visible ? QStringLiteral("收起服务器设置") : QStringLiteral("服务器设置"));
     fitHeightToContentsFanLX();
 }
 
@@ -195,7 +195,8 @@ void LoginDialogFanLX::submitFanLX() {
 }
 
 void LoginDialogFanLX::showStatusFanLX(const QString &text, bool good) {
-    statusLabelFanLX->setStyleSheet(good ? QStringLiteral("color:#1a7f37;") : QStringLiteral("color:#b3261e;"));
+    statusLabelFanLX->setStyleSheet(good ? QStringLiteral("color:%1;").arg(theme::success)
+                                         : QStringLiteral("color:%1;").arg(theme::danger));
     statusLabelFanLX->setText(text);
     statusLabelFanLX->setVisible(true);
     fitHeightToContentsFanLX();

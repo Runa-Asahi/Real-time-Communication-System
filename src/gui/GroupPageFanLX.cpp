@@ -197,50 +197,55 @@ QWidget *GroupPageFanLX::buildHomeFanLX() {
     layout->addWidget(unsupportedLabelFanLX);
 
     contentFanLX = new QWidget(home);
-    auto *content = new QVBoxLayout(contentFanLX);
+    auto *content = new QHBoxLayout(contentFanLX);
     content->setContentsMargins(0, 0, 0, 0);
-    content->setSpacing(12);
+    content->setSpacing(16);
 
     groupListFanLX = new QListWidget(contentFanLX);
+    groupListFanLX->setMinimumWidth(200);
     groupListFanLX->setMinimumHeight(120);
+    groupListFanLX->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    auto *idCard = makeCardFanLX(contentFanLX);
+    // 右栏宽度固定在 280–360 之间。窗口拉宽时只让左侧群列表变宽。
+    auto *side = new QWidget(contentFanLX);
+    side->setObjectName(QStringLiteral("groupHomeSideFanLX"));
+    side->setFixedWidth(360);
+    side->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    auto *sideLayout = new QVBoxLayout(side);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(12);
+
+    auto *idCard = makeCardFanLX(side);
     groupEditFanLX = new QLineEdit(idCard);
     groupEditFanLX->setPlaceholderText(QStringLiteral("群号（选中列表中的群自动填入，也可手输）"));
     tuneFieldFanLX(groupEditFanLX, true);
     cardLayoutFanLX(idCard)->addWidget(sectionTitleFanLX(QStringLiteral("当前群号"), idCard));
-    cardLayoutFanLX(idCard)->addWidget(groupEditFanLX, 0, Qt::AlignLeft);
+    cardLayoutFanLX(idCard)->addWidget(groupEditFanLX);
 
-    auto *memberCaption = new QLabel(QStringLiteral("群成员"), contentFanLX);
+    auto *memberCaption = new QLabel(QStringLiteral("群成员"), side);
     memberCaption->setProperty("role", QStringLiteral("sectionTitle"));
-    memberListFanLX = new QListWidget(contentFanLX);
+    memberListFanLX = new QListWidget(side);
     memberListFanLX->setMinimumHeight(110);
 
-    joinNavFanLX = kit::navButton(QStringLiteral("加入与待处理  ›"), contentFanLX);
-    auto *memberNav = kit::navButton(QStringLiteral("成员管理  ›"), contentFanLX);
-    discussionNavFanLX = kit::navButton(QStringLiteral("子群  ›"), contentFanLX);
-    auto *settingsNav = kit::navButton(QStringLiteral("群设置  ›"), contentFanLX);
-    for (auto *button : {joinNavFanLX, memberNav, discussionNavFanLX, settingsNav})
+    joinNavFanLX = kit::navButton(QStringLiteral("加入与待处理  ›"), side);
+    auto *memberNav = kit::navButton(QStringLiteral("成员管理  ›"), side);
+    discussionNavFanLX = kit::navButton(QStringLiteral("子群  ›"), side);
+    auto *settingsNav = kit::navButton(QStringLiteral("群设置  ›"), side);
+    for (auto *button : {joinNavFanLX, memberNav, discussionNavFanLX, settingsNav}) {
         tuneActionButtonFanLX(button, true);
-    auto *entryCard = makeCardFanLX(contentFanLX);
-    cardLayoutFanLX(entryCard)->addWidget(sectionTitleFanLX(QStringLiteral("功能入口"), entryCard));
-    auto *grid = new QGridLayout();
-    grid->setHorizontalSpacing(12);
-    grid->setVerticalSpacing(12);
-    grid->setColumnStretch(0, 1);
-    grid->setColumnStretch(1, 1);
-    grid->addWidget(joinNavFanLX, 0, 0);
-    grid->addWidget(memberNav, 0, 1);
-    grid->addWidget(discussionNavFanLX, 1, 0);
-    grid->addWidget(settingsNav, 1, 1);
-    cardLayoutFanLX(entryCard)->addLayout(grid);
+        // 栏宽已经固定，按钮只在栏内拉满，不会随窗口变宽被拉变形。
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->setMaximumWidth(360);
+    }
 
     mountListFanLX(content, groupListFanLX, 1, nullptr);
-    content->addWidget(idCard);
-    content->addWidget(memberCaption);
-    mountListFanLX(content, memberListFanLX, 1,
+    sideLayout->addWidget(idCard);
+    sideLayout->addWidget(memberCaption);
+    mountListFanLX(sideLayout, memberListFanLX, 1,
                    new GroupListDelegateFanLX(GroupListDelegateFanLX::Kind::Member, memberListFanLX));
-    content->addWidget(entryCard);
+    for (auto *button : {joinNavFanLX, memberNav, discussionNavFanLX, settingsNav})
+        sideLayout->addWidget(button);
+    content->addWidget(side);
     layout->addWidget(contentFanLX, 1);
 
     connect(groupListFanLX, &QListWidget::currentItemChanged, this,

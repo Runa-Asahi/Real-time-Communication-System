@@ -41,3 +41,15 @@
 写放大扫描（同一库上 5 次写事务）：2.89–3.72 s/次。提交走 `TransactionCoordinatorFanLX::execute` 的全量快照路径（capture + build + 两次全量 JSON encode 比较 + validate），延迟远高于领域查询本身，是当前最值得优化的瓶颈。注意该行测的是演示种子自带的 12 用户库，与查询侧的 1012 用户规模不可直接比较；`importInitial` 只允许空库导入，做规模梯度需要在子进程里按规模重建库。
 
 数据只代表 Windows/NTFS、MinGW GCC 15.1.0、单线程内存领域。不能外推为所有设备、线程数或数据库场景的性能保证。
+
+## 2026-10-14 对象池计数与对照基准
+
+`MemoryPoolFanLX` 增加了复用、存活、峰值和拒绝销毁计数。`destroy` 用块地址的整数范围判断槽位，外来指针只增加 `rejectedDestroys`，不析构。空块留到池析构。`QueryCacheFanLX` 的 `poolCreates` 仍是成功构造次数。`reservedBytes()` 只统计池块，不是进程 RSS。
+
+`build\pool_benchmark.exe`：200000 次，`PayloadFanLX` 含一个 `int` 和 32 字符的 `string`，块大小 64。每次 `constructions=200000 reuses=199999 blocks=1 reserved_bytes=3584 peak_live=1`，两边校验和都是 `20021700000`。
+
+同日较早三次：pool_us 24503 / 23974 / 27109，plain_us 23776 / 23810 / 23626。
+
+本轮三次（退出码 0）：pool_us 23786 / 23837 / 23833，plain_us 24926 / 24513 / 24476。
+
+六次里较快的一边会换。差距约几个百分点，正文 `string` 的堆分配仍在。不要写成对象池更快。改池之前没有全量 CTest 基线。同日 `query_cache_behavior` 通过（0.14 s），`cache_behavior` 通过（0.01 s）。细节与课程对照见 [hybrid-tcp.md](hybrid-tcp.md)。

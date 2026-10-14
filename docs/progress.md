@@ -9,7 +9,7 @@
 | 班级       | 552502 班                                         |
 | 工程文档   | `deliverables/樊陆旭_面向对象课设工程文档.docx`（按课程设计文档要求撰写） |
 | 工具链     | CMake 3.20+ / MinGW（`D:/mingw64`）/ C++17        |
-| 当前构建   | ✅ 编译通过；CTest **13/13** 通过（GUI 版，`-E performance`），无 Qt 基础版 10/10 |
+| 当前构建   | 2026-10-14 见文末：直连与对象池相关测试已通过；整表 CTest 与 gui_domain 这次没跑 |
 
 ---
 
@@ -1779,6 +1779,14 @@ std::string demoPasswordFanLX(const std::string &number) {
 **教训**：**先分清"数据"与"生成规则"**。前几轮我一直在改数据的产物，
 而问题的根源在生成器；只要还有没登录过的账号，产物就永远改不完。
 判断方法：找出该值**是"写出来的"还是"算出来的"**——算出来的只需改一处。
+
+## 对象池加固与在线好友直连（2026-10-14）
+
+服务器连接仍是控制面。`DirectLinkFanLX` 在已登录的好友之间再开一条 TCP，只运送在线单聊正文。群、离线、非好友、临时会话和发送方历史回显仍是 `DELIVER`。3 秒没有 ACK 时，同一 `messageId` 改由服务器送出正文。说明、课程对照和命令见 [hybrid-tcp.md](hybrid-tcp.md)。
+
+对象池：`destroy` 用整数地址校验槽位，空块不回收。`poolCreates` 仍是成功构造。六次 `pool_benchmark` 谁更快会换边，不能写成池更快。改池前没有全量 CTest 基线。
+
+本轮已通过：`network_behavior` 7.22s，`im_behavior` 9.34s，`p2p_behavior` 13.65s，`cache_behavior` 0.01s，`persistence_behavior` 1.74s，`query_cache_behavior` 0.14s，`integration_behavior` 0.77s，`group_behavior` 0.01s，`chat_history_behavior` 0.54s，`smoke` 0.91s，`console_behavior` 0.76s，`gui_behavior` 13.37s。`fanlx_app`、`console_tests`、`fanlx_gui`、`gui_tests` 已按新库重新链接。`gui_domain_behavior` 与 `gui_three_client_behavior` 本轮没有跑。
 
 
 

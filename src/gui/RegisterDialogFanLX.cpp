@@ -2,6 +2,7 @@
 #include "gui/DomainControllerFanLX.h"
 #include "gui/PageKitFanLX.h"
 #include "network/ImClientFanLX.h"
+#include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -16,8 +17,7 @@ RegisterDialogFanLX::RegisterDialogFanLX(const QString &dataRoot, const QString 
     : QDialog(parent), dataRootFanLX(dataRoot), hostFanLX(host), portFanLX(port) {
     setWindowTitle(QStringLiteral("注册微X账号"));
     setMinimumWidth(420);
-    setStyleSheet(kit::pageStyle(kit::accentForService(QStringLiteral("微X"))) +
-                  QStringLiteral("QDialog{background:#f7f9fb;}"));
+    setStyleSheet(kit::pageStyle(theme::brand) + QStringLiteral("QDialog{background:#F6F7F9;}"));
 
     weixEditFanLX = new QLineEdit(this);
     weixEditFanLX->setPlaceholderText(QStringLiteral("如 2026013，以后用它 + 密码登录"));
@@ -44,11 +44,13 @@ RegisterDialogFanLX::RegisterDialogFanLX(const QString &dataRoot, const QString 
 
     statusLabelFanLX = new QLabel(this);
     statusLabelFanLX->setWordWrap(true);
-    statusLabelFanLX->setStyleSheet(QStringLiteral("color:#b3261e;"));
+    statusLabelFanLX->setStyleSheet(QStringLiteral("color:%1;").arg(theme::danger));
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     registerButtonFanLX = buttons->button(QDialogButtonBox::Ok);
     registerButtonFanLX->setText(QStringLiteral("注册"));
+    if (auto *cancel = buttons->button(QDialogButtonBox::Cancel))
+        cancel->setText(QStringLiteral("取消"));
     registerButtonFanLX->setProperty("role", QStringLiteral("primary"));
     registerButtonFanLX->setMinimumHeight(34);
 
@@ -62,15 +64,22 @@ RegisterDialogFanLX::RegisterDialogFanLX(const QString &dataRoot, const QString 
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         // 两次密码必须一致：注册是唯一一次设置凭据的机会，打错以后就登不进来了。
         if (passwordEditFanLX->text() != repeatEditFanLX->text()) {
+            statusLabelFanLX->setStyleSheet(QStringLiteral("color:%1;").arg(theme::danger));
             statusLabelFanLX->setText(QStringLiteral("两次输入的密码不一致，未注册"));
             return;
         }
+        statusLabelFanLX->setStyleSheet(QStringLiteral("color:%1;").arg(theme::textSecondary));
+        statusLabelFanLX->setText(QStringLiteral("正在注册…"));
+        registerButtonFanLX->setEnabled(false);
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         QString detail;
         const auto ok = DomainControllerFanLX::registerWeiXUser(
             dataRootFanLX, hostFanLX, portFanLX, weixEditFanLX->text().trimmed(),
             nicknameEditFanLX->text().trimmed(), birthDateEditFanLX->text().trimmed(),
             locationEditFanLX->text().trimmed(), passwordEditFanLX->text(), &detail);
         if (!ok) {
+            registerButtonFanLX->setEnabled(true);
+            statusLabelFanLX->setStyleSheet(QStringLiteral("color:%1;").arg(theme::danger));
             statusLabelFanLX->setText(detail);
             return;
         }

@@ -237,9 +237,9 @@ scripts\run-gui.bat 9600 2026002    # 换端口 / 换账号
 > `data-im-gui\`，与 `data-im-a` / `data-im-b` / `data-im-server` 平级，
 > 由 `.gitignore` 的 `/data-*/` 规则统一保护。
 
-### 4.6 `fanlx_gui.exe` 的四个页签
+### 4.6 `fanlx_gui.exe` 的四个模块
 
-登录后主窗口有四个页签，课程要求的全部功能都在界面上直接可见：
+登录后主窗口左侧是四个模块（聊天、账号、好友、群）。原来的页签文字仍保留给测试和截图切换，横向页签条不显示。课程要求的全部功能都在界面上直接可见：
 
 | 页签 | 能做什么 |
 | --- | --- |
@@ -649,18 +649,19 @@ DELIVER 2026001 hello-from-A
 ## 8 测试
 
 ```powershell
-ctest --test-dir build -E performance --output-on-failure   # 启用 GUI 时 13 项（基础版 10 项，均跳过十万条性能项）
+ctest --test-dir build -E performance --output-on-failure   # 跳过十万条性能项；含 p2p_behavior
 ctest --test-dir build --output-on-failure                  # 再加上十万条性能项（最慢可达数分钟）
 ctest --test-dir build -R network_behavior                  # 只跑某一项
 ctest --test-dir build -L perf                              # 只跑十万条性能测量
 ```
 
-基础版注册 **10 项** CTest（另有 1 项 `perf` 性能测试默认不跑）；启用 GUI 后为 **13 项**（本轮实测 `ctest -E performance` 13/13 通过）。
+上表在命令行构建里包含 `p2p_behavior`；启用 GUI 后再加上表最后三项。2026-10-14 的实测见 [docs/hybrid-tcp.md](docs/hybrid-tcp.md)，这次没有重跑 `gui_domain_behavior` 和 `gui_three_client_behavior`。
 
 | CTest 名称 | 可执行文件 | 覆盖内容 |
 | --- | --- | --- |
 | `network_behavior` | `network_tests` | 拆包粘包、断连、有界队列、双进程中文收发、资源上限 |
 | `im_behavior` | `network_tests --im` | 中心转发 IM 全链路：长连接、离线投递、群增量、重启补发、双 ACK 丢失、幂等/伪造/权限（超时 90s） |
+| `p2p_behavior` | `p2p_tests` | 在线好友单聊的点对点 TCP、3 秒回退、群与跨服务仍走中转（超时 120s）。说明见 [docs/hybrid-tcp.md](docs/hybrid-tcp.md) |
 | `integration_behavior` | `integration_tests` | 跨域权限、事务、缓存开关对照与重启 |
 | `smoke` | `fanlx_app --demo` | 端到端演示：写入、重开、登录态清空 |
 | `cache_behavior` | `cache_tests` | 2Q / ARC / LFU / 内存池与好友域断言（含"好友只落在本服务的分区里、跨服务加好友被拒"） |
@@ -681,6 +682,7 @@ ctest --test-dir build -L perf                              # 只跑十万条性
 ```powershell
 .\build\cache_benchmark.exe                      # 输出 cache-benchmark.csv
 .\build\cache_benchmark.exe D:\out\bench.csv     # 也可指定输出路径
+.\build\pool_benchmark.exe                       # 对象池与 new/delete 对照，打印 pool_us / plain_us
 ```
 
 固定种子缓存 / 回源对照基准：真实应用查询入口、hot/mixed/scan 三类负载、缓存开与关逐项比对返回值，另含全量快照写放大扫描。
@@ -710,6 +712,9 @@ ctest --test-dir build -L perf                              # 只跑十万条性
 ---
 
 ## 10 常见问题（FAQ）
+
+**Q：两个客户端在同一台机器上，单聊却总是经服务器？**
+A：默认直连绑定 `127.0.0.1`。看服务端日志里的 `fanlx-p2p`。`route=RelayOnly reason=listen` 表示监听失败；`route=RelayFallback` 表示 3 秒内没有收到 ACK，正文已改走服务器，消息编号不变。跨机器需要把 `FANLX_P2P_BIND` 设成这块网卡的 IPv4。`0.0.0.0`、主机名和 NAT 都不会变成直连。群、离线和非好友本来就走服务器。
 
 **Q：运行 exe 报 `0xC0000139`（找不到入口点）？**
 A：`PATH` 中其它工具链（常见是 Anaconda 的 `Library\mingw-w64\bin`）的旧版 `libstdc++` 抢先加载。`CMakeLists.txt` 已为 MinGW 静态链接运行库，请先做一次干净重建；仍不行时显式把 MinGW 提前：
@@ -860,5 +865,6 @@ build/               构建输出（被 .gitignore 忽略，可随时删除重�
 | [docs/dependencies.md](docs/dependencies.md) | 固定版本、许可与 SHA-256 |
 | [docs/persistence-validation.md](docs/persistence-validation.md) | 持久化真实测试记录与未测故障边界 |
 | [docs/network-validation.md](docs/network-validation.md) | 中心转发 IM 协议、时序与验收 |
+| [docs/hybrid-tcp.md](docs/hybrid-tcp.md) | 在线好友单聊直连、回退、对象池实测与课程对照 |
 | [docs/integration-validation.md](docs/integration-validation.md) | 任务书条款到实现、测试的对应 |
 | [docs/handoff-prompt.md](docs/handoff-prompt.md) | 可视化扩展的交接状态、已知问题与复现方法 |

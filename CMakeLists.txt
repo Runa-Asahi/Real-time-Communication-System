@@ -100,6 +100,7 @@ add_library(fanlx_network
   src/network/TcpListenerFanLX.cpp
   src/network/ImClientFanLX.cpp
   src/network/ImServerFanLX.cpp
+  src/network/DirectLinkFanLX.cpp
   src/network/ServerAccountRegistrarFanLX.cpp
   src/network/PeerAccountResolutionFanLX.cpp
   src/network/JsonStoreFanLX.cpp
@@ -130,6 +131,13 @@ add_test(NAME network_behavior COMMAND network_tests)
 set_tests_properties(network_behavior PROPERTIES TIMEOUT 40)
 add_test(NAME im_behavior COMMAND network_tests --im)
 set_tests_properties(im_behavior PROPERTIES TIMEOUT 90)
+add_executable(p2p_tests tests/p2p_tests.cpp)
+target_link_libraries(p2p_tests PRIVATE fanlx_network iphlpapi)
+if(MINGW)
+  target_compile_options(p2p_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p2p_behavior COMMAND p2p_tests)
+set_tests_properties(p2p_behavior PROPERTIES TIMEOUT 120)
 add_executable(fanlx_app src/main.cpp)
 target_include_directories(fanlx_app PRIVATE include)
 target_link_libraries(fanlx_app PRIVATE fanlx_console)
@@ -194,6 +202,11 @@ target_link_libraries(cache_benchmark PRIVATE fanlx_persistence)
 if(MINGW)
   target_compile_options(cache_benchmark PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+add_executable(pool_benchmark benchmarks/pool_benchmark.cpp)
+target_include_directories(pool_benchmark PRIVATE include)
+if(MINGW)
+  target_compile_options(pool_benchmark PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 
 # --- 可视化客户端（可选）：FANLX_BUILD_GUI=ON 时才需要 Qt -------------------------
 if(FANLX_BUILD_GUI)
@@ -221,7 +234,8 @@ if(FANLX_BUILD_GUI)
     src/gui/GroupPageFanLX.cpp
     src/gui/GroupListDelegateFanLX.cpp
     src/gui/RegisterDialogFanLX.cpp
-    src/gui/MainWindowFanLX.cpp)
+    src/gui/MainWindowFanLX.cpp
+    src/gui/AppThemeFanLX.cpp)
   set(FANLX_GUI_HEADERS
     include/gui/ChatControllerFanLX.h
     include/gui/ConversationModelFanLX.h

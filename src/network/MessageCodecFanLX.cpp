@@ -22,7 +22,10 @@ void validateFanLX(const ChatMessageFanLX &message) {
             "LOOKUP", "LOOKUP_RESULT",
             // 好友申请（发起 / 同意 / 拒绝 / 撤回 / 删除 / 列表）：与 LOOKUP 一样是一次性凭据请求，
             // 由服务端中转并持久化；FRIEND_NOTICE 是服务端推给对端在线会话的"好友动态"提示。
-            "FRIEND", "FRIEND_RESULT", "FRIEND_NOTICE"};
+            "FRIEND", "FRIEND_RESULT", "FRIEND_NOTICE",
+            // 直连协商与单聊数据面。只发给声明过 P2P_HELLO 的会话；字段仍是现有平坦 JSON。
+            "P2P_HELLO", "P2P_OFFER", "P2P_EXPECT", "P2P_AUTH", "P2P_AUTH_OK", "P2P_READY",
+            "P2P_FAIL", "P2P_ARM", "P2P_PUSH", "P2P_DATA"};
         if (!types.count(message.type) || (message.scope != "direct" && message.scope != "group"))
             throw std::runtime_error("不支持的 IM 类型/会话");
         // REGISTER 是账号层消息：它不进聊天通道，因此不强求 service 是 QQ/微信/微博。

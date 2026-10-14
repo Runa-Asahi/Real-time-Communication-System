@@ -75,6 +75,20 @@ class ImServerFanLX {
     // 因待发送缓冲满而被判定为慢端并关闭的连接数（验收统计）。
     std::size_t slowPeerDisconnects() const;
 
+    // 直连是在线好友单聊的数据面。群、离线、非好友和发送方自己的历史回显仍走中转。
+    // peerRelayBodies 只统计“正文经由服务器发给接收方”的次数，不含发送方回显。
+    struct DirectRouteStatsFanLX {
+        std::size_t directSuccess = 0;
+        std::size_t directFail = 0;
+        std::size_t fallbacks = 0;
+        std::size_t p2pMessages = 0;
+        std::size_t relayMessages = 0;
+        std::size_t relayDirectMessages = 0;
+        std::size_t peerRelayBodies = 0;
+        std::size_t groupRelayMessages = 0;
+    };
+    DirectRouteStatsFanLX directRouteStats() const;
+
   private:
     struct Impl;
     std::unique_ptr<Impl> implFanLX;

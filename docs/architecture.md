@@ -1,4 +1,4 @@
-> 2026-09-23 IM增量更新：原S08点对点菜单已改为登录长连接+中心转发；新增 ImClientFanLX/ImServerFanLX、持久化 outbox/inbox/ACK 与好友在线状态。下面旧S08章节保留历史背景，当前网络设计以 [network-validation.md](network-validation.md) 为准。
+> 2026-09-23 IM增量更新：原S08点对点菜单已改为登录长连接+中心转发；新增 ImClientFanLX/ImServerFanLX、持久化 outbox/inbox/ACK 与好友在线状态。下面旧S08章节保留历史背景，当前网络设计以 [network-validation.md](network-validation.md) 为准。2026-10-14 起，在线好友单聊可以再开一条客户端之间的 TCP，协商和回退见 [hybrid-tcp.md](hybrid-tcp.md)。
 >
 > 2026-09-30 凭据改造：登录改为「用户名（QQ 号）+ 用户自选密码」，账号库就是领域快照 `users[].password`（课程范围内明文保存）；`--im-tokens` / `--token` / `--tokens` 与令牌文件、`scripts/im-tokens.ps1` 全部移除。下文 S02/S08 章节保留历史背景，当前凭据设计见「账户域」的「凭据与登录」小节。
 >

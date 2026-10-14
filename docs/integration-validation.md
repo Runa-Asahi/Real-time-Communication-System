@@ -17,7 +17,7 @@
 | R9 一、5 确认统一登录 | login(微X号, 密码, confirmOthers) / confirmLoginInSession | cache_behavior、query_cache_behavior；**登微X 即授权**：本人全部已开通的下级服务一并登录，下级之间仍是同号/显式绑定；批量/逐项、注销边界；密码错误与账号不存在同样拒绝（gui_domain_behavior t80） |
 | R10 一、6（1）启动加载 | JsonFileRepositoryFanLX、SnapshotCodecFanLX | persistence_behavior T11/T12：重启、恢复、锁、非法文件；真实断电/磁盘耗尽未测 |
 | R11 一、6（2—4）展示与动态切换 | main --demo、ConsoleAppFanLX | smoke D01—D08；group_behavior T10、integration_behavior 地址/快照/回切 |
-| O1 一、6（5）QQ TCP | fanlx_network、QQChatSessionFanLX、菜单 6 | network_behavior T14，两进程 100 条双向中文；仅回环实测 |
+| O1 一、6（5）QQ 点对点 TCP | `DirectLinkFanLX` 在客户端之间 `bind` / `listen` / `accept` / `connect` / `send` / `recv`；服务器连接仍负责认证、落盘和 ACK。2026-10-14 之前这一条只做到了客户端到服务器的 TCP | `p2p_behavior`：本机双客户端 JSON 与 SQLite、TCP 表指向客户端监听端口、`peerRelayBodies==0`；握手失败和 3 秒无 ACK 回退为带正文的 `DELIVER`。默认 `127.0.0.1`，NAT 未测。说明见 [hybrid-tcp.md](hybrid-tcp.md) |
 | R12 二、2—4 面向对象分层 | 值对象、容器、策略继承、仓储抽象及组合 | docs/architecture.md 类图；领域无 JSON/Win32；群策略可替换 |
 | R13 二、5（1）数字菜单 | ConsoleAppFanLX | console_behavior：范围、完整数字、0 返回、EOF 和保存 |
 | R14 二、5（2）持久化 | 候选事务、刷新、备份、原子发布 | persistence_behavior：真实进程终止/只读拒绝与故障注入；不将析构写盘当作断电保证 |
@@ -31,7 +31,7 @@
 | R22 本轮改造·微博除群以外全部可用 | ServiceTypeFanLX.h 的 `chatCapableFanLX`（QQ / 微信 / 微博 三种下级服务都能单聊）与 `groupCapableFanLX`（只有 QQ 与微信有群）、ImServerFanLX 的通道标识与"微博没有群"落点、chatDirectoryFanLX（客户端聊天目录按服务分层） | gui_behavior t68（微博能上线、`DIRECTORY_LIST` 有好友且 `groups` 为空、微博单聊真实收发、同号码的 QQ 与微博两条通道消息互不串）、t66（微博不再是"被拒绝"的通道）、persistence_behavior（演示种子 2 条好友关系：QQ + 微博）、手工双终端实测（见 [network-validation.md](network-validation.md) 的「微博单聊的复现步骤」） |
 | O2 八 课后扩展 | GUI、多聊、历史与数据库 | 不属于本轮实现，也非本次 TCP 选做验收范围 |
 | E1 缓存优化 | 单路由 2Q/LRU-K、复合 ARC、平均上限 LFU | cache_behavior、query_cache_behavior，S07 固定种子 CSV |
-| E2 内存池 | MemoryPoolFanLX + QueryCacheFanLX | query_cache_behavior：过对齐、失败回收、复用/析构 |
+| E2 内存池 | MemoryPoolFanLX + QueryCacheFanLX | query_cache_behavior：过对齐、构造失败归还、非法 destroy、1000 次 put 仍是 1 块；`pool_benchmark` 六次对照没有稳定的速度优势，见 [hybrid-tcp.md](hybrid-tcp.md) |
 | E3 事务和缓存一致性 | 局部版本键、候选发布、鉴权先于缓存 | integration_behavior 开关缓存相同业务轨迹，查询与重启全字段快照相等 |
 
 **2026-09-30 凭据改造（对本表的修订）**：登录凭据由「服务端令牌表 + 客户端令牌文件」改为

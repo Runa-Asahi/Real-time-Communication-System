@@ -1,5 +1,7 @@
 #include "gui/MainWindowFanLX.h"
+#include "db/ChatRepositoryFanLX.h"
 #include "gui/AccountPageFanLX.h"
+#include "gui/AppThemeFanLX.h"
 #include "gui/DomainControllerFanLX.h"
 #include "gui/FriendPageFanLX.h"
 #include "gui/GroupPageFanLX.h"
@@ -12,11 +14,8 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
-#include <QDebug>
-#include <QImage>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPixmap>
 #include <QStyledItemDelegate>
 #include <QLabel>
 #include <QLineEdit>
@@ -29,17 +28,19 @@
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStyle>
+#include <QButtonGroup>
 #include <QTabBar>
+#include <QToolButton>
 #include <QTabWidget>
-#include <QTextBrowser>
+#include <QScrollArea>
+#include <QResizeEvent>
+#include <QFontMetrics>
 #include <QVariant>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QDateTime>
 #include <QScrollBar>
-#include <QTextCursor>
 #include <algorithm>
-#include <vector>
 
 // 必须写在命名空间外面：Q_INIT_RESOURCE 不能出现在 namespace 里。
 // 群页外观在主窗口创建时加载。选择器限定在 #groupPageFanLX，不改其它页签。
@@ -52,129 +53,38 @@ static void loadApplicationStyleFanLX() {
     auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
     if (app && app->styleSheet() != style)
         app->setStyleSheet(style);
-}
-
-static void ensureAppResourceFanLX() {
-    Q_INIT_RESOURCE(app);
-}
-
-// 这两张 PNG 的 alpha 全是 255：好友图把浅灰/白格子烘进了像素，群图是白底。
-// 从边缘泛洪去掉低饱和的浅色，列表的悬停和选中才能透出来。已经带透明通道的图保持原样。
-static QImage knockOutOpaqueMatteFanLX(QImage image) {
-    image = image.convertToFormat(QImage::Format_ARGB32);
-    const int width = image.width();
-    const int height = image.height();
-    if (width <= 0 || height <= 0)
-        return image;
-    for (int y = 0; y < height; ++y) {
-        const auto *row = reinterpret_cast<const QRgb *>(image.constScanLine(y));
-        for (int x = 0; x < width; ++x) {
-            if (qAlpha(row[x]) < 250)
-                return image;
-        }
-    }
-    const auto matte = [](QRgb color) {
-        const int red = qRed(color);
-        const int green = qGreen(color);
-        const int blue = qBlue(color);
-        const int upper = std::max(red, std::max(green, blue));
-        const int lower = std::min(red, std::min(green, blue));
-        return lower >= 228 && (upper - lower) <= 18;
-    };
-    std::vector<char> seen(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0);
-    std::vector<int> stack;
-    const auto consider = [&](int x, int y) {
-        if (x < 0 || y < 0 || x >= width || y >= height)
-            return;
-        const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
-                           static_cast<std::size_t>(x);
-        if (seen[index])
-            return;
-        seen[index] = 1;
-        if (!matte(reinterpret_cast<const QRgb *>(image.constScanLine(y))[x]))
-            return;
-        stack.push_back(static_cast<int>(index));
-    };
-    for (int x = 0; x < width; ++x) {
-        consider(x, 0);
-        consider(x, height - 1);
-    }
-    for (int y = 0; y < height; ++y) {
-        consider(0, y);
-        consider(width - 1, y);
-    }
-    while (!stack.empty()) {
-        const int index = stack.back();
-        stack.pop_back();
-        const int x = index % width;
-        const int y = index / width;
-        reinterpret_cast<QRgb *>(image.scanLine(y))[x] = qRgba(0, 0, 0, 0);
-        consider(x + 1, y);
-        consider(x - 1, y);
-        consider(x, y + 1);
-        consider(x, y - 1);
-    }
-    return image;
-}
-
-static QPixmap loadConversationIconFanLX(const QString &resourcePath) {
-    ensureAppResourceFanLX();
-    QImage image(resourcePath);
-    if (image.isNull()) {
-        qWarning().noquote() << QStringLiteral("会话类型图标加载失败：") << resourcePath;
-        return {};
-    }
-    image = knockOutOpaqueMatteFanLX(std::move(image));
-    return QPixmap::fromImage(image);
-}
-
-// 好友用 :/conversation/111.png，群用 :/conversation/222.png。临时会话没有图标。
-static const QPixmap &conversationKindPixmapFanLX(const QString &kind) {
-    struct IconsFanLX {
-        QPixmap friendIcon;
-        QPixmap groupIcon;
-        IconsFanLX() {
-            friendIcon = loadConversationIconFanLX(QStringLiteral(":/conversation/111.png"));
-            groupIcon = loadConversationIconFanLX(QStringLiteral(":/conversation/222.png"));
-        }
-    };
-    static const IconsFanLX icons;
-    if (kind == QStringLiteral("好友"))
-        return icons.friendIcon;
-    if (kind == QStringLiteral("群"))
-        return icons.groupIcon;
-    static const QPixmap none;
-    return none;
+    fanlxGui::theme::apply(app);
 }
 
 namespace fanlxGui {
 
 namespace {
 
-QString escapeHtmlFanLX(const QString &text) {
-    auto escaped = text.toHtmlEscaped();
-    escaped.replace(QLatin1Char('\n'), QStringLiteral("<br/>"));
-    return escaped;
+QString chatClockFanLX(const QString &time) {
+    const auto mark = time.indexOf(QLatin1Char('T'));
+    if (mark >= 0 && time.size() >= mark + 6)
+        return time.mid(mark + 1, 5);
+    return time;
 }
 
 // ---------- 聊天页视觉规范（只作用于聊天页，不影响账号 / 好友 / 群页签） ----------
 // 统一在这里定义颜色，样式表与消息 HTML、会话列表绘制共用同一套取值。
 namespace chatThemeFanLX {
-const QString pageBg = QStringLiteral("#f3f5f8");      // 页面底色：柔和浅灰
-const QString panelBg = QStringLiteral("#ffffff");     // 面板：白色
-const QString border = QStringLiteral("#e3e7ed");      // 面板边框 / 分隔线
-const QString canvasBg = QStringLiteral("#f7f9fb");    // 消息区底色（略深于面板，衬托白色气泡）
-const QString textPrimary = QStringLiteral("#1f2329"); // 正文
-const QString textSecondary = QStringLiteral("#5b6472");
-const QString textMuted = QStringLiteral("#8a94a3");   // 时间、状态等辅助信息
-const QString accent = QStringLiteral("#2f6fed");      // 克制的主色蓝
-const QString accentHover = QStringLiteral("#2961d6");
-const QString accentPressed = QStringLiteral("#2253ba");
-const QString accentSoft = QStringLiteral("#eaf1fe");  // 选中 / 提示的浅蓝底
-const QString selfBubble = QStringLiteral("#dcebff");  // 自己发送的气泡
-const QString peerBubble = QStringLiteral("#ffffff");  // 收到的气泡
-const QString danger = QStringLiteral("#d93025");      // 发送失败
-const QString dangerSoft = QStringLiteral("#fdeeee");
+const QString pageBg = fanlxGui::theme::page;
+const QString panelBg = fanlxGui::theme::panel;
+const QString border = fanlxGui::theme::line;
+const QString canvasBg = fanlxGui::theme::canvas;
+const QString textPrimary = fanlxGui::theme::text;
+const QString textSecondary = fanlxGui::theme::textSecondary;
+const QString textMuted = fanlxGui::theme::textMuted;
+const QString accent = fanlxGui::theme::brand;
+const QString accentHover = fanlxGui::theme::brandHover;
+const QString accentPressed = fanlxGui::theme::brandPressed;
+const QString accentSoft = fanlxGui::theme::brandSoft;
+const QString selfBubble = fanlxGui::theme::selfBubble;
+const QString peerBubble = fanlxGui::theme::panel;
+const QString danger = fanlxGui::theme::danger;
+const QString dangerSoft = fanlxGui::theme::dangerSoft;
 } // namespace chatThemeFanLX
 
 // 聊天页唯一的样式入口：挂在聊天页根控件（#chatPageFanLX）上，用 objectName / 属性选择器
@@ -187,6 +97,7 @@ QString chatPageStyleFanLX() {
                "QFrame#chatSidebarFanLX,QFrame#chatPanelFanLX{background:%2;border:1px solid %3;"
                "border-radius:12px;}"
                "QLabel#chatSidebarTitleFanLX{font-size:16px;font-weight:600;color:%4;}"
+               "QLabel#chatEmptyFanLX{color:%6;font-size:13px;padding:28px 18px;}"
                "QListView#chatConversationsFanLX{background:transparent;border:none;outline:none;}"
                // 聊天标题区
                "QFrame#chatHeaderFanLX{background:transparent;border:none;border-bottom:1px solid %3;"
@@ -195,8 +106,10 @@ QString chatPageStyleFanLX() {
                "QLabel#chatMetaFanLX{font-size:12px;color:%6;}"
                "QLabel#chatServiceFanLX{font-size:12px;color:%6;}"
                "QLabel#chatServiceFanLX[alertFanLX=\"true\"]{color:#7a4b00;}"
-               // 消息区
-               "QTextBrowser#chatMessages{background:%7;border:none;}"
+               // 消息区：滚动视口铺底，气泡本身另有圆角样式
+               "QScrollArea#chatMessages{background:%7;border:none;}"
+               "QWidget#chatMessageViewportFanLX{background:%7;border:none;}"
+               "QWidget#chatMessageHostFanLX{background:%7;}"
                // 工具条：次要按钮 + 新消息提示
                "QFrame#chatToolbarFanLX{background:%7;border:none;border-bottom:1px solid %3;}"
                "QPushButton[chatRole=\"secondary\"]{background:%2;color:%5;border:1px solid %3;"
@@ -295,9 +208,11 @@ QString tabWidgetStyleFanLX() {
         .arg(pageBg);
 }
 
-// 会话列表行：第一行是类型图标和名称，第二行是最后一条消息。未读角标仍在右上。
+// 同一会话名始终落到同一种颜色。只用于首字母占位，不表示在线。
+QString avatarColorFanLX(const QString &seed) { return theme::avatarColor(seed); }
+
+// 会话列表行：首字母头像、名称、类型、摘要和时间。未读角标在右上。
 // 模型里的 "[好友] / [群]" 前缀留给工具提示和其它读者，这里不再画出来。
-// 临时会话没有对应图片，继续用原来的文字前缀。
 class ConversationDelegateFanLX : public QStyledItemDelegate {
   public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -361,61 +276,58 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
         }
 
         const auto kind = index.data(ConversationListModelFanLX::KindTextRoleFanLX).toString();
-        const bool useIcon = kind == QStringLiteral("好友") || kind == QStringLiteral("群");
         auto titleText = index.data(Qt::DisplayRole).toString();
         const auto prefix = QStringLiteral("[") + kind + QStringLiteral("] ");
-        if (useIcon && titleText.startsWith(prefix))
+        if (titleText.startsWith(prefix))
             titleText = titleText.mid(prefix.size());
+        const QString seed = titleText.isEmpty() ? kind : titleText;
+        const QRect slot(content.left(), content.top() + (titleRowH - kIcon) / 2, kIcon, kIcon);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(avatarColorFanLX(seed)));
+        painter->drawEllipse(slot);
+        painter->setPen(Qt::white);
+        QFont markFont = subF;
+        markFont.setPixelSize(13);
+        markFont.setWeight(QFont::DemiBold);
+        painter->setFont(markFont);
+        const QString mark = seed.isEmpty() ? QStringLiteral("?") : seed.left(1);
+        painter->drawText(slot, Qt::AlignCenter, mark);
+        const int textLeft = slot.right() + 1 + kIconGap;
 
-        int textLeft = content.left();
-        if (useIcon) {
-            const QRect slot(content.left(), content.top() + (titleRowH - kIcon) / 2, kIcon, kIcon);
-            const QPixmap &icon = conversationKindPixmapFanLX(kind);
-            if (icon.isNull()) {
-                // 资源没读到时留一个带类型字的色块，避免这一格变成空白。
-                QColor mark(textMuted);
-                const auto brush = index.data(Qt::ForegroundRole).value<QBrush>();
-                if (brush.style() != Qt::NoBrush)
-                    mark = brush.color();
-                painter->setPen(Qt::NoPen);
-                painter->setBrush(mark);
-                painter->drawRoundedRect(slot, 4, 4);
-                painter->setPen(Qt::white);
-                QFont markFont = subF;
-                markFont.setPixelSize(11);
-                markFont.setWeight(QFont::DemiBold);
-                painter->setFont(markFont);
-                painter->drawText(slot, Qt::AlignCenter, kind.left(1));
-            } else {
-                const QSize fitted = icon.size().scaled(kIcon, kIcon, Qt::KeepAspectRatio);
-                const QRect dest(slot.x() + (kIcon - fitted.width()) / 2,
-                                 slot.y() + (kIcon - fitted.height()) / 2, fitted.width(), fitted.height());
-                painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
-                painter->drawPixmap(dest, icon);
-            }
-            textLeft = slot.right() + 1 + kIconGap;
-        }
-
-        const auto brush = index.data(Qt::ForegroundRole).value<QBrush>();
-        const QColor titleColor =
-            useIcon || brush.style() == Qt::NoBrush ? QColor(textPrimary) : brush.color();
         const int titleWidth = std::max(0, content.width() - badgeWidth - (textLeft - content.left()));
         const QRect titleRect(textLeft, content.top(), titleWidth, titleRowH);
         painter->setFont(titleF);
-        painter->setPen(titleColor);
-        painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
-                          titleM.elidedText(titleText, Qt::ElideRight, titleRect.width()));
+        painter->setPen(QColor(textPrimary));
+        const QString kindMark = kind.isEmpty() ? QString() : QStringLiteral("  ") + kind;
+        const int kindWidth = kindMark.isEmpty() ? 0 : QFontMetrics(subF).horizontalAdvance(kindMark);
+        const int nameWidth = std::max(0, titleRect.width() - kindWidth);
+        painter->drawText(QRect(titleRect.left(), titleRect.top(), nameWidth, titleRect.height()),
+                          Qt::AlignLeft | Qt::AlignVCenter, titleM.elidedText(titleText, Qt::ElideRight, nameWidth));
+        if (!kindMark.isEmpty() && nameWidth > 24) {
+            painter->setFont(subF);
+            painter->setPen(QColor(textMuted));
+            painter->drawText(QRect(titleRect.left() + nameWidth, titleRect.top(), kindWidth, titleRect.height()),
+                              Qt::AlignLeft | Qt::AlignVCenter, kindMark);
+        }
 
-        // 摘要：最后一条消息（没有时给出柔和的占位文字）
         auto subtitle = index.data(ConversationListModelFanLX::SubtitleRoleFanLX).toString();
         subtitle.replace(QLatin1Char('\n'), QLatin1Char(' '));
         const bool emptySubtitle = subtitle.trimmed().isEmpty();
-        const QRect subRect(content.left(), content.top() + titleRowH + kLineGap, content.width(), subM.height());
+        auto when = index.data(ConversationListModelFanLX::TimeRoleFanLX).toString();
+        if (when.size() >= 16)
+            when = when.mid(11, 5);
+        const int timeWidth = when.isEmpty() ? 0 : subM.horizontalAdvance(when) + 8;
+        const QRect subRect(textLeft, content.top() + titleRowH + kLineGap,
+                            std::max(0, content.right() - textLeft - timeWidth + 1), subM.height());
         painter->setFont(subF);
         painter->setPen(QColor(emptySubtitle ? QStringLiteral("#b4bcc7") : textMuted));
         painter->drawText(subRect, Qt::AlignLeft | Qt::AlignVCenter,
                           subM.elidedText(emptySubtitle ? QStringLiteral("暂无消息") : subtitle, Qt::ElideRight,
                                           subRect.width()));
+        if (!when.isEmpty()) {
+            painter->drawText(QRect(subRect.right(), subRect.top(), timeWidth, subRect.height()),
+                              Qt::AlignRight | Qt::AlignVCenter, when);
+        }
         painter->restore();
     }
 
@@ -425,8 +337,8 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
     static constexpr int kPadY = 12;    // 行内上下留白
     static constexpr int kLineGap = 4;  // 标题与摘要的间距
     static constexpr int kRowGap = 4;   // 行与行之间的间距
-    static constexpr int kIcon = 22;    // 好友 / 群图标边长，不拉伸
-    static constexpr int kIconGap = 8;  // 图标和名称的间距
+    static constexpr int kIcon = 36;    // 首字母头像边长
+    static constexpr int kIconGap = 10; // 头像和名称的间距
 
     static QFont titleFont(QFont base) {
         base.setPixelSize(14);
@@ -516,6 +428,248 @@ void clearChatConversationStatusFanLX(QLabel *status) {
     status->setStyleSheet(QStringLiteral("color:#1f2328; padding:2px;"));
 }
 
+// 只替换我们自己写的 %1/%2/%3。用户昵称里的百分号不会再被 arg 吃掉。
+QString spanFanLX(const QString &color, int weight, const QString &plain) {
+    QString span = QStringLiteral("<span style=\"color:%1;font-weight:%2;\">%3</span>");
+    span.replace(QStringLiteral("%1"), color);
+    span.replace(QStringLiteral("%2"), QString::number(weight));
+    span.replace(QStringLiteral("%3"), plain.toHtmlEscaped());
+    return span;
+}
+
+// 消息区宿主。不用 QTextBrowser 表格：气泡是带圆角的控件，正文是纯文本。
+// sizeHint 保持一个普通高度，避免滚动区把整个窗口撑到内容那么高。
+class MessagePaneFanLX : public QWidget {
+  public:
+    static constexpr int kCap = 420;
+    static constexpr int kSide = 18;
+    static constexpr int kPadX = 12;
+    static constexpr int kPadY = 10;
+
+    struct MessageRowFanLX {
+        QWidget *root = nullptr;
+        QLabel *meta = nullptr;
+        QFrame *bubble = nullptr;
+        QLabel *body = nullptr;
+        bool self = false;
+        int gapBefore = 12;
+        int bubbleW = 0;
+        int bubbleH = 0;
+        int metaH = 0;
+    };
+
+    explicit MessagePaneFanLX(QWidget *parent = nullptr) : QWidget(parent) {
+        setObjectName(QStringLiteral("chatMessageHostFanLX"));
+        setAttribute(Qt::WA_StyledBackground, true);
+        setAutoFillBackground(true);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        QPalette pal = palette();
+        pal.setColor(QPalette::Window, QColor(chatThemeFanLX::canvasBg));
+        setPalette(pal);
+    }
+
+    QSize sizeHint() const override { return QSize(480, 280); }
+    QSize minimumSizeHint() const override { return QSize(0, 0); }
+
+    void showEmptyFanLX(const QString &title, const QString &detail) {
+        clearContentFanLX();
+        emptyTitleFanLX = makePlainLabelFanLX(title, 16, 600, chatThemeFanLX::textSecondary, this);
+        emptyDetailFanLX = makePlainLabelFanLX(detail, 13, 400, chatThemeFanLX::textMuted, this);
+        emptyTitleFanLX->setAlignment(Qt::AlignCenter);
+        emptyDetailFanLX->setAlignment(Qt::AlignCenter);
+        // 父控件已经显示时，后创建的子控件默认是隐藏的，必须显式显示。
+        emptyTitleFanLX->show();
+        emptyDetailFanLX->show();
+        syncFanLX();
+    }
+
+    void showMessagesFanLX(const QList<MessageItemFanLX> &items) {
+        clearContentFanLX();
+        QString previousSender;
+        bool previousSelf = false;
+        QString previousTime;
+        bool hasPrevious = false;
+        for (const auto &item : items) {
+            const bool continued = hasPrevious && item.self == previousSelf && item.sender == previousSender;
+            const bool repeatTime = continued && item.timeText == previousTime;
+            const auto shownStatus = theme::shortStatus(item.statusText, item.failed);
+            MessageRowFanLX row;
+            row.self = item.self;
+            row.gapBefore = !hasPrevious ? 0 : (continued ? 4 : 14);
+            row.root = new QWidget(this);
+
+            QString meta;
+            if (!continued) {
+                meta += spanFanLX(item.self ? chatThemeFanLX::accent : chatThemeFanLX::textSecondary, 600, item.sender);
+                meta += QStringLiteral("&nbsp;&nbsp;");
+                meta += spanFanLX(chatThemeFanLX::textMuted, 400,
+                                  item.timeText.isEmpty() ? QStringLiteral("[原始时间未知]")
+                                                          : chatClockFanLX(item.timeText));
+            } else if (!repeatTime && !item.timeText.isEmpty()) {
+                meta += spanFanLX(chatThemeFanLX::textMuted, 400, chatClockFanLX(item.timeText));
+            }
+            if (!shownStatus.isEmpty()) {
+                if (!meta.isEmpty())
+                    meta += QStringLiteral("&nbsp;&nbsp;");
+                meta += spanFanLX(item.failed ? chatThemeFanLX::danger : chatThemeFanLX::textMuted,
+                                  item.failed ? 600 : 400, shownStatus);
+            }
+            if (!meta.isEmpty()) {
+                row.meta = new QLabel(row.root);
+                row.meta->setTextFormat(Qt::RichText);
+                row.meta->setText(meta);
+                row.meta->setWordWrap(true);
+                row.meta->setAlignment(item.self ? Qt::AlignRight | Qt::AlignTop : Qt::AlignLeft | Qt::AlignTop);
+                row.meta->setStyleSheet(QStringLiteral("font-size:12px;background:transparent;border:none;"));
+                if (!item.statusText.isEmpty())
+                    row.meta->setToolTip(item.statusText);
+            }
+
+            row.bubble = new QFrame(row.root);
+            row.bubble->setObjectName(QStringLiteral("chatBubbleFanLX"));
+            row.bubble->setFrameShape(QFrame::NoFrame);
+            row.bubble->setAttribute(Qt::WA_StyledBackground, true);
+            const auto background = item.failed ? chatThemeFanLX::dangerSoft
+                                                : (item.self ? chatThemeFanLX::selfBubble : chatThemeFanLX::peerBubble);
+            const auto border = (item.self || item.failed)
+                                    ? QStringLiteral("none")
+                                    : QStringLiteral("1px solid %1").arg(chatThemeFanLX::border);
+            row.bubble->setStyleSheet(QStringLiteral("QFrame#chatBubbleFanLX{background:%1;border:%2;border-radius:12px;}")
+                                          .arg(background, border));
+            if (!item.statusText.isEmpty())
+                row.bubble->setToolTip(item.statusText);
+
+            row.body = new QLabel(item.body, row.bubble);
+            row.body->setWordWrap(true);
+            row.body->setTextFormat(Qt::PlainText);
+            row.body->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            row.body->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+            row.body->setStyleSheet(QStringLiteral("color:%1;font-size:14px;background:transparent;border:none;")
+                                        .arg(chatThemeFanLX::textPrimary));
+            // 会话打开、历史返回和发送都发生在主窗口显示之后。这时新建的控件不会跟着父控件自动出现。
+            row.root->show();
+            if (row.meta)
+                row.meta->show();
+            row.bubble->show();
+            row.body->show();
+            rowsFanLX.push_back(row);
+            previousSender = item.sender;
+            previousTime = item.timeText;
+            previousSelf = item.self;
+            hasPrevious = true;
+        }
+        syncFanLX();
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override {
+        QWidget::resizeEvent(event);
+        syncFanLX();
+    }
+
+  private:
+    static QLabel *makePlainLabelFanLX(const QString &text, int pixelSize, int weight, const QString &color,
+                                      QWidget *parent) {
+        auto *label = new QLabel(text, parent);
+        label->setWordWrap(true);
+        label->setTextFormat(Qt::PlainText);
+        label->setStyleSheet(QStringLiteral("color:%1;font-size:%2px;font-weight:%3;background:transparent;")
+                                 .arg(color)
+                                 .arg(pixelSize)
+                                 .arg(weight));
+        return label;
+    }
+
+    void clearContentFanLX() {
+        for (const auto &row : rowsFanLX)
+            delete row.root;
+        rowsFanLX.clear();
+        delete emptyTitleFanLX;
+        emptyTitleFanLX = nullptr;
+        delete emptyDetailFanLX;
+        emptyDetailFanLX = nullptr;
+    }
+
+    int measureFanLX(int paneWidth) {
+        if (emptyTitleFanLX && emptyDetailFanLX) {
+            const int inner = qMax(1, paneWidth - kSide * 2);
+            emptyTitleFanLX->ensurePolished();
+            emptyDetailFanLX->ensurePolished();
+            return kSide * 2 + emptyTitleFanLX->heightForWidth(inner) + 8 + emptyDetailFanLX->heightForWidth(inner);
+        }
+        const int maxBubble = qMax(kPadX * 2 + 48, qMin(kCap, qMax(96, paneWidth - kSide * 2)));
+        int content = kSide;
+        for (auto &row : rowsFanLX) {
+            int longest = 0;
+            row.body->ensurePolished();
+            const QFontMetrics metrics(row.body->font());
+            for (const auto &line : row.body->text().split(QLatin1Char('\n')))
+                longest = qMax(longest, metrics.horizontalAdvance(line));
+            int bubbleW = qBound(kPadX * 2 + 24, longest + kPadX * 2, maxBubble);
+            int metaH = 0;
+            if (row.meta) {
+                row.meta->ensurePolished();
+                const int natural = qMin(maxBubble, qMax(bubbleW, row.meta->sizeHint().width()));
+                bubbleW = qMax(bubbleW, natural);
+                bubbleW = qMin(bubbleW, maxBubble);
+                metaH = qMax(row.meta->fontMetrics().height(), row.meta->heightForWidth(bubbleW));
+            }
+            const int inner = qMax(1, bubbleW - kPadX * 2);
+            const int textH = qMax(metrics.height(), row.body->heightForWidth(inner)) + 2;
+            row.bubbleW = bubbleW;
+            row.metaH = metaH;
+            row.bubbleH = textH + kPadY * 2;
+            content += row.gapBefore + metaH + (metaH > 0 ? 4 : 0) + row.bubbleH;
+        }
+        return content + kSide;
+    }
+
+    void arrangeFanLX(int paneWidth, int viewHeight, int contentH) {
+        if (emptyTitleFanLX && emptyDetailFanLX) {
+            const int inner = qMax(1, paneWidth - kSide * 2);
+            const int titleH = emptyTitleFanLX->heightForWidth(inner);
+            const int detailH = emptyDetailFanLX->heightForWidth(inner);
+            const int block = titleH + 8 + detailH;
+            const int y = qMax(kSide, (viewHeight - block) / 2);
+            emptyTitleFanLX->setGeometry(kSide, y, inner, titleH);
+            emptyDetailFanLX->setGeometry(kSide, y + titleH + 8, inner, detailH);
+            return;
+        }
+        int y = kSide;
+        if (viewHeight > contentH)
+            y = viewHeight - contentH + kSide;
+        for (auto &row : rowsFanLX) {
+            const int block = row.gapBefore + row.metaH + (row.metaH > 0 ? 4 : 0) + row.bubbleH;
+            row.root->setGeometry(0, y, paneWidth, block);
+            int local = row.gapBefore;
+            const int x = row.self ? qMax(kSide, paneWidth - kSide - row.bubbleW) : kSide;
+            if (row.meta) {
+                row.meta->setGeometry(x, local, row.bubbleW, row.metaH);
+                local += row.metaH + 4;
+            }
+            row.bubble->setGeometry(x, local, row.bubbleW, row.bubbleH);
+            row.body->setGeometry(kPadX, kPadY, qMax(1, row.bubbleW - kPadX * 2), qMax(1, row.bubbleH - kPadY * 2));
+            y += block;
+        }
+    }
+
+    void syncFanLX() {
+        if (relayoutGuardFanLX || width() < 32)
+            return;
+        relayoutGuardFanLX = true;
+        const int contentH = qMax(1, measureFanLX(width()));
+        if (minimumHeight() != contentH)
+            setMinimumHeight(contentH);
+        arrangeFanLX(width(), qMax(height(), contentH), contentH);
+        relayoutGuardFanLX = false;
+    }
+
+    QList<MessageRowFanLX> rowsFanLX;
+    QLabel *emptyTitleFanLX = nullptr;
+    QLabel *emptyDetailFanLX = nullptr;
+    bool relayoutGuardFanLX = false;
+};
+
 } // namespace
 
 MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControllerFanLX *domain,
@@ -525,6 +679,8 @@ MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControll
     loadApplicationStyleFanLX();
     setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — QQ 客户端"));
     resize(1180, 760);
+    // 逻辑像素。150% / 200% 下窗口仍能落到常见桌面里，具体下限由分栏最小宽度再抬高。
+    setMinimumSize(760, 520);
     // 窗口底色与聊天页一致，避免菜单栏和页签之间露出另一块系统灰。
     auto chromePalette = palette();
     chromePalette.setColor(QPalette::Window, QColor(chatThemeFanLX::pageBg));
@@ -554,20 +710,9 @@ MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControll
     connect(tabsFanLX, &QTabWidget::currentChanged, this, [this](int index) {
         if (index != 0)
             clearChatConversationStatusFanLX(statusFanLX);
+        syncShellFanLX(index);
     });
-
-    auto *central = new QWidget(this);
-    central->setAutoFillBackground(true);
-    auto centralPalette = central->palette();
-    centralPalette.setColor(QPalette::Window, QColor(chatThemeFanLX::pageBg));
-    central->setPalette(centralPalette);
-    auto *layout = new QVBoxLayout(central);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-    layout->addWidget(tabsFanLX, 1);
-    layout->addWidget(statusFanLX);
-    setCentralWidget(central);
-
+    buildShellFanLX();
     buildMenusFanLX();
 
     connect(controllerFanLX, &ChatControllerFanLX::conversationsChangedFanLX, this,
@@ -650,6 +795,11 @@ void MainWindowFanLX::buildChatPageFanLX() {
     conversationViewFanLX->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     conversationViewFanLX->setCursor(Qt::PointingHandCursor);
 
+    emptyConversationsFanLX = new QLabel(QStringLiteral("还没有会话\n好友和群会出现在这里"), sidebar);
+    emptyConversationsFanLX->setObjectName(QStringLiteral("chatEmptyFanLX"));
+    emptyConversationsFanLX->setAlignment(Qt::AlignCenter);
+    emptyConversationsFanLX->setWordWrap(true);
+    emptyConversationsFanLX->hide();
     auto *sidebarHead = new QVBoxLayout();
     sidebarHead->setContentsMargins(22, 18, 22, 10);
     sidebarHead->addWidget(sidebarTitle);
@@ -657,6 +807,7 @@ void MainWindowFanLX::buildChatPageFanLX() {
     sidebarLayout->setContentsMargins(0, 0, 0, 8);
     sidebarLayout->setSpacing(0);
     sidebarLayout->addLayout(sidebarHead);
+    sidebarLayout->addWidget(emptyConversationsFanLX);
     sidebarLayout->addWidget(conversationViewFanLX, 1);
 
     // ---- 右侧：聊天面板 ----
@@ -683,21 +834,40 @@ void MainWindowFanLX::buildChatPageFanLX() {
     serviceLabelFanLX->setTextFormat(Qt::PlainText);
     serviceLabelFanLX->setWordWrap(true);
     serviceLabelFanLX->setVisible(false);
-    auto *headerLayout = new QVBoxLayout(header);
-    headerLayout->setContentsMargins(24, 14, 24, 12);
-    headerLayout->setSpacing(2);
-    headerLayout->addWidget(chatTitle);
+    auto *titleColumn = new QVBoxLayout();
+    titleColumn->setContentsMargins(0, 0, 0, 0);
+    titleColumn->setSpacing(2);
+    titleColumn->addWidget(chatTitle);
     // headerFanLX 不进布局：账号与服务只占 serviceLabel 这一行，避免标题下空出一条。
-    headerLayout->addWidget(serviceLabelFanLX);
+    titleColumn->addWidget(serviceLabelFanLX);
+    auto *historyButton = new QPushButton(QStringLiteral("聊天记录"), header);
+    historyButton->setProperty("chatRole", QStringLiteral("secondary"));
+    historyButton->setCursor(Qt::PointingHandCursor);
+    historyButton->setFocusPolicy(Qt::StrongFocus);
+    historyButton->setToolTip(QStringLiteral("按会话、发送者和关键词查询历史消息"));
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(24, 14, 16, 12);
+    headerLayout->setSpacing(12);
+    headerLayout->addLayout(titleColumn, 1);
+    headerLayout->addWidget(historyButton, 0, Qt::AlignTop);
+    connect(historyButton, &QPushButton::clicked, this, &MainWindowFanLX::onSearchFanLX);
 
-    // 消息区
-    messageViewFanLX = new QTextBrowser(panel);
+    // 消息区：圆角气泡放在滚动视口里。视口宽度跟着窗口走，气泡最宽 420。
+    messageViewFanLX = new QScrollArea(panel);
     messageViewFanLX->setObjectName(QStringLiteral("chatMessages"));
-    messageViewFanLX->setOpenExternalLinks(false);
-    messageViewFanLX->setPlaceholderText(QStringLiteral("选择左侧会话开始聊天"));
     messageViewFanLX->setFrameShape(QFrame::NoFrame);
-    messageViewFanLX->document()->setDocumentMargin(20);
+    messageViewFanLX->setWidgetResizable(true);
     messageViewFanLX->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    messageViewFanLX->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    if (auto *viewport = messageViewFanLX->viewport()) {
+        viewport->setObjectName(QStringLiteral("chatMessageViewportFanLX"));
+        viewport->setAttribute(Qt::WA_StyledBackground, true);
+        viewport->setAutoFillBackground(true);
+        auto pal = viewport->palette();
+        pal.setColor(QPalette::Window, QColor(chatThemeFanLX::canvasBg));
+        viewport->setPalette(pal);
+    }
+    messageViewFanLX->setWidget(new MessagePaneFanLX());
 
     // 工具条：查看更早 / 返回最新（左）、新消息提示（中）、重连（右）——都是次要操作
     earlierButtonFanLX = new QPushButton(QStringLiteral("查看更早"), panel);
@@ -858,6 +1028,173 @@ void MainWindowFanLX::buildMenusFanLX() {
     help->addAction(QStringLiteral("功能与课设条款对照…"), this, &MainWindowFanLX::showAboutFanLX);
 }
 
+void MainWindowFanLX::buildShellFanLX() {
+    tabsFanLX->tabBar()->hide();
+    tabsFanLX->tabBar()->setFixedHeight(0);
+
+    auto *rail = new QWidget(this);
+    rail->setObjectName(QStringLiteral("navRailFanLX"));
+    rail->setFixedWidth(76);
+    auto *railLayout = new QVBoxLayout(rail);
+    railLayout->setContentsMargins(8, 12, 8, 12);
+    railLayout->setSpacing(4);
+    auto *group = new QButtonGroup(this);
+    group->setExclusive(true);
+    for (int i = 0; i < tabsFanLX->count(); ++i) {
+        auto *button = new QToolButton(rail);
+        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setCheckable(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setFocusPolicy(Qt::StrongFocus);
+        button->setToolTip(tabsFanLX->tabText(i));
+        button->setAccessibleName(tabsFanLX->tabText(i));
+        const auto full = tabsFanLX->tabText(i);
+        button->setText(full == QStringLiteral("账号与服务") ? QStringLiteral("账号") : full);
+        const char *iconName = "chat";
+        if (i == 1)
+            iconName = "account";
+        else if (i == 2)
+            iconName = "people";
+        else if (i == 3)
+            iconName = "group";
+        button->setIcon(theme::lineIcon(QString::fromLatin1(iconName)));
+        button->setIconSize(QSize(20, 20));
+        button->setProperty("navRole", QStringLiteral("item"));
+        button->setFixedSize(60, 58);
+        group->addButton(button, i);
+        railLayout->addWidget(button, 0, Qt::AlignHCenter);
+        navButtonsFanLX.append(button);
+    }
+    railLayout->addStretch(1);
+    connect(group, &QButtonGroup::idClicked, this, [this](int id) { selectPageFanLX(id); });
+
+    auto *header = new QFrame(this);
+    header->setObjectName(QStringLiteral("appHeaderFanLX"));
+    header->setFixedHeight(52);
+    moduleTitleFanLX = new QLabel(header);
+    moduleTitleFanLX->setObjectName(QStringLiteral("moduleTitleFanLX"));
+    identityLabelFanLX = new QLabel(header);
+    identityLabelFanLX->setObjectName(QStringLiteral("identityChipFanLX"));
+    identityLabelFanLX->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(16, 0, 16, 0);
+    headerLayout->setSpacing(12);
+    headerLayout->addWidget(moduleTitleFanLX, 1);
+    headerLayout->addWidget(identityLabelFanLX);
+
+    auto *body = new QWidget(this);
+    auto *bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(0, 0, 0, 0);
+    bodyLayout->setSpacing(0);
+    bodyLayout->addWidget(header);
+    bodyLayout->addWidget(tabsFanLX, 1);
+    bodyLayout->addWidget(statusFanLX);
+
+    auto *shell = new QWidget(this);
+    shell->setObjectName(QStringLiteral("appShellFanLX"));
+    shell->setAttribute(Qt::WA_StyledBackground, true);
+    auto *shellLayout = new QHBoxLayout(shell);
+    shellLayout->setContentsMargins(0, 0, 0, 0);
+    shellLayout->setSpacing(0);
+    shellLayout->addWidget(rail);
+    shellLayout->addWidget(body, 1);
+    using namespace chatThemeFanLX;
+    shell->setStyleSheet(QStringLiteral(
+                              "QWidget#appShellFanLX{background:%1;}"
+                              "QWidget#navRailFanLX{background:%2;border-right:1px solid %3;}"
+                              "QFrame#appHeaderFanLX{background:%2;border-bottom:1px solid %3;}"
+                              "QLabel#moduleTitleFanLX{font-size:16px;font-weight:600;color:%4;background:transparent;}"
+                              "QLabel#identityChipFanLX{color:%5;font-size:12px;background:transparent;}"
+                              "QToolButton[navRole=\"item\"]{background:transparent;color:%5;border:none;"
+                              "border-radius:8px;padding:4px 2px;font-size:11px;}"
+                              "QToolButton[navRole=\"item\"]:hover{background:#F3F5F8;color:%4;}"
+                              "QToolButton[navRole=\"item\"]:checked{background:%6;color:%7;}"
+                              "QToolButton[navRole=\"item\"]:focus{border:1px solid %7;}")
+                              .arg(pageBg, panelBg, border, textPrimary, textSecondary, accentSoft, accent));
+    setCentralWidget(shell);
+    if (navButtonsFanLX.size() > 2 && friendPageFanLX) {
+        friendNavBadgeFanLX = new QLabel(navButtonsFanLX.at(2));
+        friendNavBadgeFanLX->setObjectName(QStringLiteral("navRequestBadgeFanLX"));
+        friendNavBadgeFanLX->setAlignment(Qt::AlignCenter);
+        friendNavBadgeFanLX->setFixedHeight(16);
+        friendNavBadgeFanLX->setMinimumWidth(16);
+        friendNavBadgeFanLX->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        friendNavBadgeFanLX->setStyleSheet(QStringLiteral(
+            "background:#DC2626;color:#ffffff;border-radius:8px;font-size:10px;font-weight:700;padding:0 4px;"));
+        friendNavBadgeFanLX->hide();
+        connect(friendPageFanLX, &FriendPageFanLX::incomingRequestsChangedFanLX, this, [this](int count) {
+            if (!friendNavBadgeFanLX)
+                return;
+            if (count <= 0) {
+                friendNavBadgeFanLX->hide();
+                return;
+            }
+            friendNavBadgeFanLX->setText(count > 99 ? QStringLiteral("99+") : QString::number(count));
+            friendNavBadgeFanLX->adjustSize();
+            friendNavBadgeFanLX->setFixedHeight(16);
+            const auto *button = navButtonsFanLX.at(2);
+            friendNavBadgeFanLX->move(qMax(0, button->width() - friendNavBadgeFanLX->width() - 4), 2);
+            friendNavBadgeFanLX->show();
+            friendNavBadgeFanLX->raise();
+        });
+        connect(friendPageFanLX, &FriendPageFanLX::chatWithPeerFanLX, this,
+                [this](const QString &peer, bool temporary) {
+                    if (peer.isEmpty() || !controllerFanLX)
+                        return;
+                    if (temporary) {
+                        if (controllerFanLX->openTemporaryConversation(peer).isEmpty()) {
+                            statusFanLX->setText(QStringLiteral("暂时不能打开和 %1 的会话").arg(peer));
+                            return;
+                        }
+                    } else {
+                        auto self = controllerFanLX->account();
+                        if (self.isEmpty() && domainFanLX)
+                            self = domainFanLX->currentAccountId();
+                        if (self.isEmpty() || self == peer) {
+                            statusFanLX->setText(QStringLiteral("暂时不能打开和 %1 的会话").arg(peer));
+                            selectPageFanLX(0);
+                            return;
+                        }
+                        const auto key = QString::fromStdString(chatDbFanLX::conversationKeyFanLX(
+                            chatDbFanLX::ScopeFanLX::Direct, self.toStdString(), peer.toStdString()));
+                        controllerFanLX->openConversation(key);
+                    }
+                    selectPageFanLX(0);
+                    statusFanLX->setText(temporary ? QStringLiteral("已打开临时会话：%1").arg(peer)
+                                                   : QStringLiteral("已打开好友会话：%1").arg(peer));
+                });
+    }
+    if (!navButtonsFanLX.isEmpty())
+        navButtonsFanLX.first()->setChecked(true);
+    syncShellFanLX(tabsFanLX->currentIndex());
+}
+
+void MainWindowFanLX::syncShellFanLX(int index) {
+    if (!tabsFanLX || index < 0 || index >= tabsFanLX->count())
+        return;
+    if (index < navButtonsFanLX.size() && navButtonsFanLX.at(index) && !navButtonsFanLX.at(index)->isChecked()) {
+        QSignalBlocker blocker(navButtonsFanLX.at(index));
+        navButtonsFanLX.at(index)->setChecked(true);
+    }
+    if (moduleTitleFanLX)
+        moduleTitleFanLX->setText(tabsFanLX->tabText(index));
+    if (!identityLabelFanLX)
+        return;
+    QString service;
+    QString account = accountFanLX;
+    if (domainFanLX && domainFanLX->opened()) {
+        service = domainFanLX->currentService();
+        const auto current = domainFanLX->currentAccountId();
+        if (!current.isEmpty())
+            account = current;
+    } else if (controllerFanLX) {
+        service = controllerFanLX->serviceDisplayName();
+        if (!controllerFanLX->account().isEmpty())
+            account = controllerFanLX->account();
+    }
+    identityLabelFanLX->setText(service.isEmpty() ? account : QStringLiteral("%1 · %2").arg(service, account));
+}
+
 void MainWindowFanLX::selectPageFanLX(int index) {
     if (tabsFanLX && index >= 0 && index < tabsFanLX->count())
         tabsFanLX->setCurrentIndex(index);
@@ -997,12 +1334,19 @@ void MainWindowFanLX::refreshHeaderFanLX() {
     } else {
         setWindowTitle(QStringLiteral("樊陆旭模拟即时通讯系统 — %1 客户端").arg(chatService));
     }
+    if (tabsFanLX)
+        syncShellFanLX(tabsFanLX->currentIndex());
 }
 
 void MainWindowFanLX::onConversationsChangedFanLX() {
     conversationsFanLX->setItems(controllerFanLX->conversations());
     syncConversationSelectionFanLX(conversationViewFanLX, conversationsFanLX,
                                    controllerFanLX->currentConversation());
+    const bool empty = conversationsFanLX->rowCount() == 0;
+    if (emptyConversationsFanLX)
+        emptyConversationsFanLX->setVisible(empty);
+    if (conversationViewFanLX)
+        conversationViewFanLX->setVisible(!empty);
     refreshHeaderFanLX();
 }
 
@@ -1015,66 +1359,36 @@ void MainWindowFanLX::onMessagesChangedFanLX() {
     refreshHeaderFanLX();
 }
 
-// 消息区渲染：继续使用 QTextBrowser 的 Qt 富文本，只用其稳定支持的表格、单元格底色、
-// 对齐、内边距与基础字体样式（不依赖 Flexbox / Grid / 圆角）。
-// 自己发送的消息靠右、浅蓝底；收到的消息靠左、白底；发送失败用浅红底与红色状态。
-// 所有来自数据的文字（发送者、时间、状态、正文）都经过 HTML 转义。
+// 消息区渲染：自己的消息靠右、浅蓝圆角；收到的靠左、白底圆角；失败用浅红。
+// 短状态只改展示。正文是纯文本，用户内容里的 < 和 % 按原样显示。
 void MainWindowFanLX::renderMessagesFanLX() {
-    using namespace chatThemeFanLX;
-    QString html;
-    for (const auto &item : controllerFanLX->messages()) {
-        const auto sender = QStringLiteral("<span style='color:%1; font-weight:600;'>%2</span>")
-                                .arg(item.self ? accent : textSecondary, item.sender.toHtmlEscaped());
-        const auto time = item.timeText.isEmpty()
-                              ? QStringLiteral("<span style='color:%1'>[原始时间未知]</span>").arg(textMuted)
-                              : QStringLiteral("<span style='color:%1'>%2</span>")
-                                    .arg(textMuted, item.timeText.toHtmlEscaped());
-        const auto status = item.statusText.isEmpty()
-                                ? QString()
-                                : (item.failed
-                                       ? QStringLiteral("&nbsp;&nbsp;<span style='color:%1; font-weight:600;'>"
-                                                        "✕ %2</span>")
-                                       : QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>%2</span>"))
-                                      .arg(item.failed ? danger : textMuted, item.statusText.toHtmlEscaped());
-        const auto align = item.self ? QStringLiteral("right") : QStringLiteral("left");
-        const auto bubble = item.failed ? dangerSoft : (item.self ? selfBubble : peerBubble);
-        // 收到的白色气泡在浅灰底上加一圈浅边框，保证层次；自己的蓝色气泡不需要。
-        const auto bubbleBorder = item.self || item.failed
-                                      ? QStringLiteral("border='0'")
-                                      : QStringLiteral("border='1' style='border-color:#e6eaf0; "
-                                                       "border-style:solid; border-collapse:collapse;'");
-        // 外层两列表格：留白列（约 28%）把气泡限制在舒适的阅读宽度内，并决定靠左还是靠右。
-        const auto spacer = QStringLiteral("<td width='28%'></td>");
-        const auto content =
-            QStringLiteral("<td align='%1' valign='top'>"
-                           "<p align='%1' style='margin:0 2px 5px 2px; font-size:12px;'>%2&nbsp;&nbsp;%3%4</p>"
-                           "<table align='%1' cellspacing='0' cellpadding='11' bgcolor='%5' %6>"
-                           "<tr><td style='color:%7; font-size:14px; line-height:140%;'>%8</td></tr>"
-                           "</table></td>")
-                .arg(align, sender, time, status, bubble, bubbleBorder, textPrimary, escapeHtmlFanLX(item.body));
-        html += QStringLiteral("<table width='100%' cellspacing='0' cellpadding='0' style='margin-bottom:16px;'>"
-                               "<tr>%1</tr></table>")
-                    .arg(item.self ? spacer + content : content + spacer);
-    }
-    if (html.isEmpty()) {
-        // 空状态：未选会话与"已选会话但没有记录"分开说明。
+    auto *pane = static_cast<MessagePaneFanLX *>(messageViewFanLX->widget());
+    if (!pane)
+        return;
+    const auto *bar = messageViewFanLX->verticalScrollBar();
+    const int saved = bar ? bar->value() : 0;
+    const bool follow = controllerFanLX->followingLatest() && !hasPendingNewMessageFanLX;
+    const auto &items = controllerFanLX->messages();
+    if (items.isEmpty()) {
         const bool noConversation = controllerFanLX->currentConversation().isEmpty();
-        const auto title = noConversation ? QStringLiteral("选择左侧会话开始聊天") : QStringLiteral("暂无消息");
-        const auto detail = noConversation
-                                ? QStringLiteral("单聊与群聊都在左侧列表中，点击任意一项即可打开。")
-                                : QStringLiteral("当前会话没有记录，或历史尚未加载完成。");
-        html = QStringLiteral("<table width='100%' cellspacing='0' cellpadding='0' style='margin-top:96px;'>"
-                              "<tr><td align='center'>"
-                              "<p align='center' style='font-size:16px; font-weight:600; color:%1;'>%2</p>"
-                              "<p align='center' style='margin-top:6px; font-size:13px; color:%3;'>%4</p>"
-                              "</td></tr></table>")
-                   .arg(textSecondary, title, textMuted, detail);
+        pane->showEmptyFanLX(noConversation ? QStringLiteral("选择左侧会话开始聊天") : QStringLiteral("暂无消息"),
+                             noConversation ? QStringLiteral("单聊与群聊都在左侧列表中，点击任意一项即可打开。")
+                                           : QStringLiteral("当前会话没有记录，或历史尚未加载完成。"));
+    } else {
+        pane->showMessagesFanLX(items);
     }
-    const auto scroll = messageViewFanLX->verticalScrollBar()->value();
-    messageViewFanLX->setHtml(html);
-    if (controllerFanLX->followingLatest() && !hasPendingNewMessageFanLX)
-        messageViewFanLX->moveCursor(QTextCursor::End);
-    else messageViewFanLX->verticalScrollBar()->setValue(scroll);
+    const int generation = messageViewFanLX->property("fanlxScrollGen").toInt() + 1;
+    messageViewFanLX->setProperty("fanlxScrollGen", generation);
+    const auto applyScroll = [view = messageViewFanLX, saved, follow, generation] {
+        if (!view || view->property("fanlxScrollGen").toInt() != generation)
+            return;
+        auto *scrollBar = view->verticalScrollBar();
+        if (!scrollBar)
+            return;
+        scrollBar->setValue(follow ? scrollBar->maximum() : qMin(saved, scrollBar->maximum()));
+    };
+    applyScroll();
+    QTimer::singleShot(0, messageViewFanLX, applyScroll);
 }
 
 void MainWindowFanLX::onConversationSelectedFanLX(const QModelIndex &index) {
