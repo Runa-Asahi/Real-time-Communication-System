@@ -1,5 +1,10 @@
 # Ciallo（即时通讯）
 
+[![Windows Build & Release](https://github.com/Runa-Asahi/Real-time-Communication-System/actions/workflows/windows-release.yml/badge.svg)](https://github.com/Runa-Asahi/Real-time-Communication-System/actions/workflows/windows-release.yml)
+![C++17](https://img.shields.io/badge/C%2B%2B-17-blue) ![Qt 6](https://img.shields.io/badge/Qt-6-41CD52) ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
+
+> **English:** Ciallo is a C++17 instant-messaging course project: a TCP IM server, a console client and a Qt 6 Widgets desktop client sharing one account / friend / group / persistence core, with LAN direct links for online friends. Windows + MinGW + CMake. Quick start: download the release zip and run `Ciallo.bat`, or build with the commands in "跑起来" below.
+
 面向对象课程设计 · C++17 · 552502 班
 
 产品名 **Ciallo**。用**微X号**登录，再开通 QQ、微信或微博。聊天、好友和群都跟随当前服务。控制台菜单和 Qt 图形客户端共用同一套账户、好友、群与持久化。
