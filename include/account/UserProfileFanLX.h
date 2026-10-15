@@ -24,5 +24,5 @@ struct UserProfileFanLX {
     std::string birthDate; // 出生日期
     std::string applyDate; // 注册 / 申请日期
     std::string location;  // 所在地
-    std::string password;  // 登录密码（明文，用户自选；为空表示尚未设密，禁止登录）
+    std::string password;  // 登录凭据：PBKDF2 哈希记录（见 PasswordHashFanLX.h）；旧数据可能仍是明文，登录成功后迁移；为空表示尚未设密，禁止登录
 };

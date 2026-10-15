@@ -1,5 +1,6 @@
 #pragma once
 #include "account/CredentialRejectedFanLX.h"
+#include "account/PasswordHashFanLX.h"
 #include "account/ServiceAccountFanLX.h"
 #include "account/ServiceNotConfirmedFanLX.h"
 #include "account/ServiceNotSubscribedFanLX.h"
@@ -238,6 +239,8 @@ class AccountManagerFanLX {
         if (weixAccountId.empty())
             throw std::runtime_error("微X号不能为空");
         const auto user = profile.userId; // 先取副本：addUser 会移动 profile
+        // 用户自选口令只以加盐哈希落库；addUser 本身不改写口令，因为快照加载也走它。
+        profile.password = hashNewCredentialFanLX(profile.password);
         addUser(std::move(profile));
         addAccount({user, ServiceTypeFanLX::WeiX, std::move(weixAccountId), false});
         subscriptionsFanLX.insert(keyFanLX(user, ServiceTypeFanLX::WeiX));
@@ -286,8 +289,36 @@ class AccountManagerFanLX {
         if (index == accountIdIndexFanLX.end())
             return false;
         const auto &profile = usersFanLX.at(accountsFanLX.at(index->second).userId);
-        // 未设密码的账号（例如旧数据加载而来）对任何输入都不通过，包括空串。
-        return !profile.password.empty() && profile.password == password;
+        // 未设密码的账号（例如旧数据加载而来）对任何输入都不通过，包括空串；
+        // 远端账号的占位口令同样永不放行。哈希记录按 PBKDF2 校验，旧版明文记录按明文比对。
+        return passwordHashFanLX::verify(profile.password, password);
+    }
+
+    // 把用户新设定的明文口令转换成落库用的哈希记录（注册、改密使用）。
+    // 先按明文做与 addUser 相同的空串 / 长度校验，再哈希，错误信息保持不变。
+    static std::string hashNewCredentialFanLX(const std::string &password) {
+        if (password.size() > 4096)
+            throw std::runtime_error("密码超过 4096 字节");
+        if (password.empty())
+            throw std::runtime_error("密码不能为空");
+        return passwordHashFanLX::hash(password);
+    }
+
+    // 登录成功后的透明迁移：口令正确且库里仍是旧版明文（或迭代次数过低）时改写为新哈希。
+    // 返回是否改写；口令不对时什么都不做并返回 false。
+    bool upgradeCredentialFanLX(ServiceTypeFanLX service, const std::string &accountId,
+                                const std::string &password) {
+        if (!credentialNeedsUpgradeFanLX(service, accountId) || !verifyPassword(service, accountId, password))
+            return false;
+        usersFanLX.at(accountsFanLX.at(keyOfAccountIdFanLX(service, accountId)).userId).password =
+            passwordHashFanLX::hash(password);
+        return true;
+    }
+    bool credentialNeedsUpgradeFanLX(ServiceTypeFanLX service, const std::string &accountId) const {
+        const auto index = accountIdIndexFanLX.find(accountIdKeyFanLX(service, accountId));
+        if (index == accountIdIndexFanLX.end())
+            return false;
+        return passwordHashFanLX::needsRehash(usersFanLX.at(accountsFanLX.at(index->second).userId).password);
     }
 
     // 修改密码（注册之外唯一的凭据写入口）：旧密码必须正确，新密码不允许为空。
@@ -300,7 +331,7 @@ class AccountManagerFanLX {
         if (newPassword.size() > 4096)
             throw std::runtime_error("新密码超过 4096 字节");
         usersFanLX.at(accountsFanLX.at(keyOfAccountIdFanLX(service, accountId)).userId).password =
-            std::move(newPassword);
+            passwordHashFanLX::hash(newPassword);
     }
 
     // 会话恢复：调用方已凭 isAccountLoggedIn 确认该账号处于登录态，这里只重建前端身份句柄，

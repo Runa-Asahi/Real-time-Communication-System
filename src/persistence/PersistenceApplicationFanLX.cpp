@@ -94,6 +94,7 @@ std::string PersistenceApplicationFanLX::actorUser(PlatformStateFanLX &s, const 
 void PersistenceApplicationFanLX::registerUser(UserProfileFanLX u,
                                                std::vector<ServiceAccountFanLX> accounts) {
     requireReady();
+    u.password = AccountManagerFanLX::hashNewCredentialFanLX(u.password); // 口令只以加盐哈希落库
     transactionsFanLX.execute([&](auto &s) {
         s.accounts.addUser(u);
         for (const auto &a : accounts) {
@@ -124,6 +125,15 @@ void PersistenceApplicationFanLX::activateService(AccountRefFanLX actor, Service
 void PersistenceApplicationFanLX::login(AccountRefFanLX actor, const std::string &password, bool confirm) {
     requireReady();
     stateFanLX.accounts.login(actor.service, actor.accountId, password, confirm);
+    // 透明迁移：口令已经校验通过，若库里仍是旧版明文就在一次事务里改写成哈希并落盘。
+    // 迁移是尽力而为：存储只读或提交失败时登录照常成功，下次登录会再尝试。
+    if (stateFanLX.accounts.credentialNeedsUpgradeFanLX(actor.service, actor.accountId)) {
+        try {
+            transactionsFanLX.execute(
+                [&](auto &s) { s.accounts.upgradeCredentialFanLX(actor.service, actor.accountId, password); });
+        } catch (const std::exception &) {
+        }
+    }
 }
 void PersistenceApplicationFanLX::logout(AccountRefFanLX actor, bool all) {
     requireReady();
