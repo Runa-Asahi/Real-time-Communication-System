@@ -31,15 +31,18 @@ jobs:
       - name: Add MinGW to PATH
         shell: bash
         run: |
+          # install-qt-action v4 只设置 QT_ROOT_DIR，Qt6_DIR 可能为空
+          QT_HOME="${Qt6_DIR:-$QT_ROOT_DIR}"
+          echo "QT_HOME=$QT_HOME" >> "$GITHUB_ENV"
           echo "$IQTA_TOOLS/mingw1310_64/bin" >> "$GITHUB_PATH"
-          echo "$Qt6_DIR/bin" >> "$GITHUB_PATH"
+          echo "$QT_HOME/bin" >> "$GITHUB_PATH"
           g++ --version
           qmake6 --version || qmake --version
 
       - name: Configure & Build
         shell: bash
         run: |
-          QT_PREFIX="${Qt6_DIR:-$Qt5_DIR}"
+          QT_PREFIX="$QT_HOME"
           cmake -S . -B build -G "MinGW Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
             -DFANLX_BUILD_GUI=ON \
@@ -53,8 +56,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          cp "$Qt6_DIR"/bin/Qt6Core.dll "$Qt6_DIR"/bin/Qt6Gui.dll "$Qt6_DIR"/bin/Qt6Widgets.dll build/ || true
-          mkdir -p build/platforms && cp "$Qt6_DIR"/plugins/platforms/*.dll build/platforms/ || true
+          # 把与构建一致的 Qt 与 MinGW 运行库放到测试程序旁边，避免加载到 runner 镜像里其他版本的 DLL（导致 GUI 测试 SegFault/堆损坏）
+          set -x
+          cp "$QT_HOME"/bin/Qt6Core.dll "$QT_HOME"/bin/Qt6Gui.dll "$QT_HOME"/bin/Qt6Widgets.dll build/
+          mingw="$IQTA_TOOLS/mingw1310_64/bin"
+          cp "$mingw"/libstdc++-6.dll "$mingw"/libgcc_s_seh-1.dll "$mingw"/libwinpthread-1.dll build/
+          mkdir -p build/platforms && cp "$QT_HOME"/plugins/platforms/*.dll build/platforms/
+          set +x
           ctest --test-dir build --output-on-failure -LE perf --timeout 600
 
       - name: Upload GUI screenshots
