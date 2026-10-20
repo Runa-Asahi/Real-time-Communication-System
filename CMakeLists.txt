@@ -61,6 +61,7 @@ add_dependencies(fanlx_sqlite fanlx_sqlite_importlib)
 # --- 持久化层实现（源文件按层归入 src/persistence，头文件在 include/persistence） ----
 add_library(fanlx_persistence
   src/persistence/DemoSeedFanLX.cpp
+  src/persistence/PasswordHashFanLX.cpp
   src/persistence/SnapshotCodecFanLX.cpp
   src/persistence/SchemaValidatorFanLX.cpp
   src/persistence/PreparedCommitFanLX.cpp
@@ -71,7 +72,8 @@ add_library(fanlx_persistence
   src/persistence/TransactionCoordinatorFanLX.cpp
   src/persistence/PersistenceApplicationFanLX.cpp)
 target_include_directories(fanlx_persistence PUBLIC include)
-target_link_libraries(fanlx_persistence PUBLIC nlohmann_json::nlohmann_json)
+# bcrypt：Windows 自带 CNG（PBKDF2-HMAC-SHA256 口令哈希与随机盐），不是第三方库。
+target_link_libraries(fanlx_persistence PUBLIC nlohmann_json::nlohmann_json bcrypt)
 if(MINGW)
   target_compile_options(fanlx_persistence PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
@@ -159,6 +161,8 @@ if(FANLX_BUILD_CLI)
 endif()
 add_executable(cache_tests tests/cache_tests.cpp)
 target_include_directories(cache_tests PRIVATE include)
+# AccountManagerFanLX 的口令校验实现在 fanlx_persistence（PasswordHashFanLX.cpp）。
+target_link_libraries(cache_tests PRIVATE fanlx_persistence)
 if(MINGW)
   target_compile_options(cache_tests PRIVATE -UNDEBUG)
 endif()
@@ -173,6 +177,12 @@ if(MINGW)
   target_link_options(persistence_tests PRIVATE -municode)
 endif()
 add_test(NAME persistence_behavior COMMAND persistence_tests)
+add_executable(password_hash_tests tests/password_hash_tests.cpp)
+target_link_libraries(password_hash_tests PRIVATE fanlx_persistence)
+if(MINGW)
+  target_compile_options(password_hash_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME password_hash_behavior COMMAND password_hash_tests)
 add_executable(query_cache_tests tests/query_cache_tests.cpp)
 target_link_libraries(query_cache_tests PRIVATE fanlx_persistence)
 if(MINGW)

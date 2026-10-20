@@ -170,27 +170,13 @@ DomainControllerFanLX::OpenOutcomeFanLX DomainControllerFanLX::openWithOutcome(
         return fail(QStringLiteral("领域库初始化失败：") + fromUtf8FanLX(error.what()));
     }
 
-    // 认证优先按微X号进行。为兼容旧数据和用户习惯，也接受 QQ / 微信 / 微博
-    // 服务号作为登录别名，再解析到同一用户的微X号；密码仍只校验一次，始终来自用户资料。
-    // 这修复了旧库中只有 QQ 号（例如“1”）时 GUI 无法登录的问题。
+    // 微X号是唯一的登录身份：QQ / 微信 / 微博 号码不能作为登录别名，
+    // 输入的号码在账号库里不是微X号时直接拒绝（留在登录界面），不去猜测所属用户。
     const auto &manager = appFanLX->state().accounts;
-    std::string loginWeix = account.toStdString();
-    if (!manager.hasAccount(ServiceTypeFanLX::WeiX, loginWeix)) {
-        for (const auto service : {ServiceTypeFanLX::QQ, ServiceTypeFanLX::Wechat,
-                                   ServiceTypeFanLX::Weibo}) {
-            if (!manager.hasAccount(service, loginWeix))
-                continue;
-            const auto user = manager.accountByAccountId(service, loginWeix).userId;
-            const auto *weix = manager.findAccount(user, ServiceTypeFanLX::WeiX);
-            if (weix) {
-                loginWeix = weix->accountId;
-                break;
-            }
-        }
-    }
+    const std::string loginWeix = account.toStdString();
     if (!manager.hasAccount(ServiceTypeFanLX::WeiX, loginWeix)) {
         saveAndClose();
-        return reject(QStringLiteral("账号 %1 不存在：请输入微X号，或已开通服务的 QQ/微信/微博号码")
+        return reject(QStringLiteral("账号库里没有微X号 %1：请用微X号登录（QQ/微信/微博号码不能直接登录）")
                           .arg(account));
     }
     try {
