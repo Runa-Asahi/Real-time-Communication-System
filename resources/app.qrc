@@ -2,9 +2,9 @@
 <RCC version="1.0">
   <qresource prefix="/">
     <file>app.qss</file>
-    <!-- 会话列表图标。源文件留在仓库根目录，运行时从资源读，不依赖工作目录。 -->
-    <file alias="conversation/111.png">../111.png</file>
-    <file alias="conversation/222.png">../222.png</file>
+    <!-- 会话列表图标。运行时从资源读，不依赖工作目录。 -->
+    <file alias="conversation/111.png">icons/111.png</file>
+    <file alias="conversation/222.png">icons/222.png</file>
     <!-- Ciallo 应用图标（登录页、窗口图标） -->
     <file alias="icons/ciallo.svg">icons/ciallo.svg</file>
     <file alias="icons/ciallo.png">icons/ciallo.png</file>
