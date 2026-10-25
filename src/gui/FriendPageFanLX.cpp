@@ -186,7 +186,8 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
     installFriendHeaderFanLX(kRemarkPage, QStringLiteral("备注与标签"));
 
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(12, 12, 12, 12);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
     outer->addWidget(stackFanLX);
     for (auto *scroll : findChildren<QScrollArea *>()) {
         scroll->setAutoFillBackground(true);
@@ -236,24 +237,15 @@ FriendPageFanLX::FriendPageFanLX(DomainControllerFanLX *controller, QWidget *par
 QWidget *FriendPageFanLX::buildHomeFanLX() {
     auto *home = new QWidget();
     auto *layout = new QVBoxLayout(home);
-    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setContentsMargins(16, 12, 16, 16);
     layout->setSpacing(12);
 
-    homeTitleFanLX = new QLabel(home);
-    homeTitleFanLX->setObjectName(QStringLiteral("friendHomeTitleFanLX"));
-    homeTitleFanLX->setText(QStringLiteral("好友"));
     homeCountFanLX = new QLabel(home);
     homeCountFanLX->setObjectName(QStringLiteral("friendHomeCountFanLX"));
     searchEditFanLX = new QLineEdit(home);
     searchEditFanLX->setObjectName(QStringLiteral("friendSearchFanLX"));
     searchEditFanLX->setPlaceholderText(QStringLiteral("搜索号码、备注或标签"));
     searchEditFanLX->setClearButtonEnabled(true);
-    auto *titleRow = new QHBoxLayout();
-    titleRow->setSpacing(8);
-    titleRow->addWidget(homeTitleFanLX, 0, Qt::AlignVCenter);
-    titleRow->addWidget(homeCountFanLX, 0, Qt::AlignVCenter);
-    titleRow->addStretch(1);
-
     listHintFanLX = kit::hintLabel(home);
     listHintFanLX->hide();
 
@@ -275,6 +267,7 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
     toolbar->addWidget(addNav);
     toolbar->addWidget(requestWrap);
     toolbar->addStretch(1);
+    toolbar->addWidget(homeCountFanLX, 0, Qt::AlignVCenter);
 
     friendListFanLX = new QListWidget(home);
     friendListFanLX->setMinimumHeight(280);
@@ -343,7 +336,6 @@ QWidget *FriendPageFanLX::buildHomeFanLX() {
     split->setSpacing(0);
     split->addWidget(homeListStackFanLX, 1);
     split->addWidget(detailPanelFanLX);
-    layout->addLayout(titleRow);
     layout->addWidget(searchEditFanLX);
     layout->addWidget(listHintFanLX);
     layout->addLayout(toolbar);
@@ -916,11 +908,10 @@ void FriendPageFanLX::refreshFanLX() {
         if (isVisible())
             QTimer::singleShot(0, this, [this] { refreshRequestsFanLX(); });
     }
-    if (homeTitleFanLX)
-        homeTitleFanLX->setText(QStringLiteral("好友"));
     if (homeCountFanLX) {
         homeCountFanLX->setVisible(loggedIn);
-        homeCountFanLX->setText(loggedIn ? QString::number(controllerFanLX->friendAccounts().size()) : QString());
+        homeCountFanLX->setText(loggedIn ? QStringLiteral("%1 人").arg(controllerFanLX->friendAccounts().size())
+                                         : QString());
     }
     if (listHintFanLX) {
         listHintFanLX->setVisible(!loggedIn);

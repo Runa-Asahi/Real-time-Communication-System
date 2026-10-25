@@ -5,7 +5,6 @@
 // 配色：按钮 / 卡片 / 标题打 role 属性，颜色来自 AppThemeFanLX 这一套品牌色。
 // accentForService 只留给小型服务标识。切换服务不再给整页、全部按钮重新上色。
 #include "gui/AppThemeFanLX.h"
-#include <QColor>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -28,62 +27,51 @@ inline QString accentForService(const QString &service) {
     return QStringLiteral("#6a4fd8"); // 微X：上层身份
 }
 
-namespace detail {
-// 把 color 与白色按 ratio（0~1，越大越接近白色）混合，得到浅色底。
-inline QString tint(const QColor &color, double ratio) {
-    const auto mixed = [ratio](int channel) { return static_cast<int>(channel + (255 - channel) * ratio); };
-    return QColor(mixed(color.red()), mixed(color.green()), mixed(color.blue())).name();
-}
-} // namespace detail
-
 // 页面级样式表。accentName 保留是为了不改调用点；整页不再跟随服务色。
+// 色值与 AppThemeFanLX 一致：白卡片、8px 控件、12px 大卡片。
 inline QString pageStyle(const QString &accentName) {
     Q_UNUSED(accentName);
-    const QColor accent(theme::brand);
-    const auto dark = accent.darker(120).name();
-    const auto light = detail::tint(accent, 0.90);
-    const auto soft = detail::tint(accent, 0.65);
     return QStringLiteral(
-               "QPushButton[role=\"primary\"]{background:%1;color:#ffffff;border:none;border-radius:6px;"
-               "padding:4px 16px;}"
-               "QPushButton[role=\"primary\"]:hover{background:%2;}"
-               "QPushButton[role=\"primary\"]:disabled{background:#c5ccd3;}"
-               "QPushButton[role=\"nav\"]{text-align:left;padding:6px 16px;border:1px solid #d9dee3;"
-               "border-left:4px solid %1;border-radius:8px;background:#ffffff;font-size:14px;}"
-               "QPushButton[role=\"nav\"]:hover{background:%3;border-color:%1;}"
-               "QPushButton[role=\"nav\"]:disabled{color:#9aa0a6;background:#f6f8fa;border-left-color:#c5ccd3;}"
-               "QPushButton[role=\"danger\"]{padding:4px 16px;border:1px solid #DC2626;border-radius:6px;"
-               "color:#DC2626;background:#ffffff;}"
-               "QPushButton[role=\"danger\"]:hover{background:#FEE2E2;}"
-               "QPushButton[role=\"back\"]{color:%1;padding:4px 8px;border:none;background:transparent;"
-               "font-weight:600;}"
-               "QPushButton[role=\"back\"]:hover{background:%3;border-radius:6px;}"
-               "QFrame#cardFanLX{background:%3;border:1px solid %4;border-left:5px solid %1;"
-               "border-radius:10px;}"
-               "QLabel[role=\"title\"]{font-size:16px;font-weight:600;color:%2;}"
-               "QLabel[role=\"hint\"]{color:#5f6368;}"
-               "QFrame#bannerFanLX{background:#fff4e5;border:1px solid #ffd8a8;border-radius:8px;}"
-               "QFrame#bannerFanLX QLabel{color:#7a4b00;}"
-               "QFrame#profileCardFanLX{background:#ffffff;border:1px solid #e1e4e8;border-radius:12px;}"
-               "QLabel[role=\"section\"]{font-size:12px;font-weight:600;color:%1;letter-spacing:1px;}"
-               "QLabel[role=\"avatar\"]{background:%1;color:#ffffff;border-radius:28px;font-size:24px;"
-               "font-weight:700;}"
-               "QLabel[role=\"name\"]{font-size:20px;font-weight:700;color:#202124;}"
-               "QLabel[role=\"stat\"]{font-size:26px;font-weight:700;color:%1;}"
-               "QLabel[role=\"caption\"]{font-size:12px;color:#80868b;}"
-               "QLabel[role=\"value\"]{font-size:14px;color:#202124;}"
-               "QFrame[role=\"divider\"]{background:#eceff1;border:none;}"
-               "QGroupBox{border:1px solid #d9dee3;border-radius:8px;margin-top:14px;padding-top:6px;}"
-               "QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px;color:%2;font-weight:600;}"
-               "QListWidget,QTableWidget,QPlainTextEdit{border:1px solid #d9dee3;border-radius:6px;"
-               "background:#ffffff;}"
-               "QListWidget::item{padding:4px 6px;}"
-               "QListWidget::item:selected,QTableWidget::item:selected{background:%3;color:#202124;}"
-               "QHeaderView::section{background:%3;border:none;border-bottom:1px solid %4;padding:4px;"
-               "color:%2;font-weight:600;}"
-               "QLineEdit{border:1px solid #c7cdd4;border-radius:6px;padding:4px 8px;background:#ffffff;}"
-               "QLineEdit:focus{border:1px solid %1;}")
-        .arg(accent.name(), dark, light, soft);
+        "QPushButton[role=\"primary\"]{background:#2563EB;color:#ffffff;border:none;border-radius:8px;"
+        "padding:0px 16px;min-height:36px;font-size:14px;font-weight:600;}"
+        "QPushButton[role=\"primary\"]:hover{background:#1D4ED8;}"
+        "QPushButton[role=\"primary\"]:pressed{background:#1E40AF;}"
+        "QPushButton[role=\"primary\"]:disabled{background:#E6E8EE;color:#8A94A3;}"
+        "QPushButton[role=\"nav\"]{text-align:left;padding:0px 16px;border:1px solid #E6E8EE;"
+        "border-radius:8px;background:#ffffff;font-size:14px;font-weight:600;min-height:36px;color:#1F2329;}"
+        "QPushButton[role=\"nav\"]:hover{background:#F3F5F8;border-color:#D7DEE8;}"
+        "QPushButton[role=\"nav\"]:disabled{color:#8A94A3;background:#F6F7F9;}"
+        "QPushButton[role=\"danger\"]{padding:0px 16px;border:1px solid #FECACA;border-radius:8px;"
+        "color:#DC2626;background:#ffffff;min-height:36px;font-size:14px;font-weight:600;}"
+        "QPushButton[role=\"danger\"]:hover{background:#FEE2E2;border-color:#DC2626;}"
+        "QPushButton[role=\"back\"]{color:#2563EB;padding:4px 8px;border:none;background:transparent;"
+        "font-weight:600;font-size:14px;border-radius:8px;}"
+        "QPushButton[role=\"back\"]:hover{background:#E8EFFD;}"
+        "QFrame#cardFanLX{background:#ffffff;border:1px solid #E6E8EE;border-radius:12px;}"
+        "QLabel[role=\"title\"]{font-size:20px;font-weight:600;color:#1F2329;}"
+        "QLabel[role=\"hint\"]{color:#5B6472;font-size:13px;}"
+        "QFrame#bannerFanLX{background:#FFF4E5;border:1px solid #F3D7B0;border-radius:12px;}"
+        "QFrame#bannerFanLX QLabel{color:#B45309;}"
+        "QFrame#profileCardFanLX{background:#ffffff;border:1px solid #E6E8EE;border-radius:12px;}"
+        "QLabel[role=\"section\"]{font-size:12px;font-weight:600;color:#2563EB;}"
+        "QLabel[role=\"avatar\"]{background:#2563EB;color:#ffffff;border-radius:28px;font-size:24px;"
+        "font-weight:700;}"
+        "QLabel[role=\"name\"]{font-size:20px;font-weight:600;color:#1F2329;}"
+        "QLabel[role=\"stat\"]{font-size:26px;font-weight:600;color:#1F2329;}"
+        "QLabel[role=\"caption\"]{font-size:12px;color:#8A94A3;}"
+        "QLabel[role=\"value\"]{font-size:14px;color:#1F2329;}"
+        "QFrame[role=\"divider\"]{background:#E6E8EE;border:none;}"
+        "QGroupBox{border:1px solid #E6E8EE;border-radius:12px;margin-top:14px;padding-top:6px;background:#ffffff;}"
+        "QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px;color:#1F2329;font-weight:600;}"
+        "QListWidget,QTableWidget,QPlainTextEdit{border:1px solid #E6E8EE;border-radius:12px;"
+        "background:#ffffff;color:#1F2329;}"
+        "QListWidget::item{padding:8px 10px;}"
+        "QListWidget::item:selected,QTableWidget::item:selected{background:#E8EFFD;color:#1F2329;}"
+        "QHeaderView::section{background:#F3F5F8;border:none;border-bottom:1px solid #E6E8EE;padding:8px;"
+        "color:#5B6472;font-weight:600;}"
+        "QLineEdit{border:1px solid #E6E8EE;border-radius:8px;padding:0px 10px;min-height:36px;"
+        "background:#ffffff;color:#1F2329;}"
+        "QLineEdit:focus{border:1px solid #2563EB;}");
 }
 
 // 装上统一的页面样式。service 只保留参数，避免调用点跟着改；不再按服务重绘整页。

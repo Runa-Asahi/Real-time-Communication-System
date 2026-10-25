@@ -188,12 +188,9 @@ QWidget *GroupPageFanLX::buildHomeFanLX() {
     layout->setContentsMargins(16, 12, 16, 16);
     layout->setSpacing(12);
 
-    headerLabelFanLX = new QLabel(home);
-    headerLabelFanLX->setProperty("role", QStringLiteral("title"));
     unsupportedLabelFanLX = kit::hintLabel(home);
     unsupportedLabelFanLX->setText(
         QStringLiteral("当前服务没有群功能。请在「账号与服务」里把当前服务切换为 QQ 或微信。"));
-    layout->addWidget(headerLabelFanLX);
     layout->addWidget(unsupportedLabelFanLX);
 
     contentFanLX = new QWidget(home);
@@ -685,9 +682,6 @@ void GroupPageFanLX::refreshFanLX() {
     }
 
     const auto group = groupIdFanLX();
-    headerLabelFanLX->setText(QStringLiteral("%1 群 · %2 　共 %3 个群")
-                                  .arg(service, controllerFanLX->currentAccountId())
-                                  .arg(rows.size()));
     for (auto *label : scopeLabelsFanLX)
         label->setText(group.isEmpty() ? QStringLiteral("尚未选择群：请先回到首页选中或填写群号")
                                        : QStringLiteral("操作对象: 群 %1").arg(group));

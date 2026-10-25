@@ -7,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QDialog>
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QColor>
@@ -99,39 +100,7 @@ QString accountHomeStyleFanLX() {
         "QLabel#accountEntryArrowFanLX{font-size:18px;color:#8A94A3;background:transparent;}");
 }
 
-// 右侧四个入口：真正的按钮，标题、说明和箭头只是按钮里的标签。
-QPushButton *accountEntryButtonFanLX(const QString &title, const QString &detail, QWidget *parent) {
-    auto *button = new QPushButton(parent);
-    button->setProperty("role", QStringLiteral("accountEntry"));
-    button->setCursor(Qt::PointingHandCursor);
-    button->setFocusPolicy(Qt::StrongFocus);
-    button->setMinimumHeight(64);
-    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-    auto *row = new QHBoxLayout(button);
-    row->setContentsMargins(16, 12, 14, 12);
-    row->setSpacing(12);
-    auto *textColumn = new QVBoxLayout();
-    textColumn->setSpacing(2);
-    auto *titleLabel = new QLabel(title, button);
-    titleLabel->setObjectName(QStringLiteral("accountEntryTitleFanLX"));
-    auto *detailLabel = new QLabel(detail, button);
-    detailLabel->setObjectName(QStringLiteral("accountEntryDetailFanLX"));
-    detailLabel->setWordWrap(true);
-    textColumn->addWidget(titleLabel);
-    textColumn->addWidget(detailLabel);
-    auto *arrow = new QLabel(QStringLiteral("›"), button);
-    arrow->setObjectName(QStringLiteral("accountEntryArrowFanLX"));
-    arrow->setAlignment(Qt::AlignCenter);
-    for (auto *label : {titleLabel, detailLabel, arrow}) {
-        label->setAttribute(Qt::WA_TransparentForMouseEvents);
-        label->setFocusPolicy(Qt::NoFocus);
-    }
-    row->addLayout(textColumn, 1);
-    row->addWidget(arrow);
-    return button;
-}
-
-// 资料卡与入口的两列容器。窄于 780px 时改成上下排列，避免两侧被挤扁。
+// 资料卡与下方操作区的宽度分配。窄于 780px 时改成上下排列。
 class AccountColumnsFanLX : public QWidget {
   public:
     explicit AccountColumnsFanLX(QWidget *parent = nullptr) : QWidget(parent) {
@@ -144,8 +113,8 @@ class AccountColumnsFanLX : public QWidget {
     void setPanels(QWidget *profile, QWidget *entries) {
         profile_ = profile;
         entries_ = entries;
-        profile_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        entries_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        profile_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        entries_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         apply(false);
     }
 
@@ -160,16 +129,27 @@ class AccountColumnsFanLX : public QWidget {
         stacked_ = stacked;
         grid_->removeWidget(profile_);
         grid_->removeWidget(entries_);
+        entries_->setMinimumWidth(0);
+        entries_->setMaximumWidth(QWIDGETSIZE_MAX);
+        grid_->setRowStretch(0, 0);
+        grid_->setRowStretch(1, 0);
         if (stacked) {
-            grid_->addWidget(profile_, 0, 0, Qt::AlignTop);
-            grid_->addWidget(entries_, 1, 0, Qt::AlignTop);
+            profile_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            entries_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            grid_->addWidget(profile_, 0, 0);
+            grid_->addWidget(entries_, 1, 0);
             grid_->setColumnStretch(0, 1);
             grid_->setColumnStretch(1, 0);
         } else {
-            grid_->addWidget(profile_, 0, 0, Qt::AlignTop);
-            grid_->addWidget(entries_, 0, 1, Qt::AlignTop);
-            grid_->setColumnStretch(0, 58);
-            grid_->setColumnStretch(1, 42);
+            // 右栏宽度跟群页一样固定，窗口拉宽时只让左侧资料卡变宽、变高。
+            entries_->setFixedWidth(360);
+            entries_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+            profile_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            grid_->addWidget(profile_, 0, 0);
+            grid_->addWidget(entries_, 0, 1);
+            grid_->setColumnStretch(0, 1);
+            grid_->setColumnStretch(1, 0);
+            grid_->setRowStretch(0, 1);
         }
     }
 
@@ -179,31 +159,23 @@ class AccountColumnsFanLX : public QWidget {
     bool stacked_ = false;
 };
 
-// 首页根：内容最宽 1040，宽屏居中；宽度变化时通知两列改为上下排列。
+// 首页铺满浅灰区域。宽于 780 时右栏固定 360，和群页一样；更窄时改成上下排列。
 class AccountHomeFanLX : public QWidget {
   public:
     explicit AccountHomeFanLX(QWidget *parent = nullptr) : QWidget(parent) {
         setObjectName(QStringLiteral("accountHomeFanLX"));
         setAttribute(Qt::WA_StyledBackground, true);
         setStyleSheet(accountHomeStyleFanLX());
-        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
-    QWidget *columnFanLX = nullptr;
     AccountColumnsFanLX *columnsFanLX = nullptr;
 
   protected:
     void resizeEvent(QResizeEvent *event) override {
         QWidget::resizeEvent(event);
-        if (!columnFanLX)
-            return;
-        const auto margins = layout() ? layout()->contentsMargins() : QMargins();
-        const int available = qMax(280, width() - margins.left() - margins.right());
-        const int target = qMin(1040, available);
-        if (columnFanLX->minimumWidth() != target || columnFanLX->maximumWidth() != target)
-            columnFanLX->setFixedWidth(target);
         if (columnsFanLX)
-            columnsFanLX->setStacked(target < 780);
+            columnsFanLX->setStacked(width() < 780);
     }
 };
 
@@ -372,8 +344,8 @@ class AccountServiceBodyFanLX : public QWidget {
     void setCards(QWidget *listCard, QWidget *openCard) {
         list_ = listCard;
         open_ = openCard;
-        list_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-        open_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        list_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        open_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         open_->setMinimumWidth(260);
         place(false);
     }
@@ -399,10 +371,11 @@ class AccountServiceBodyFanLX : public QWidget {
             grid_->setColumnStretch(0, 1);
             grid_->setColumnStretch(1, 0);
         } else {
-            grid_->addWidget(list_, 0, 0, Qt::AlignTop);
-            grid_->addWidget(open_, 0, 1, Qt::AlignTop);
-            grid_->setColumnStretch(0, 65);
-            grid_->setColumnStretch(1, 35);
+            grid_->addWidget(list_, 0, 0);
+            grid_->addWidget(open_, 0, 1);
+            grid_->setColumnStretch(0, 1);
+            grid_->setColumnStretch(1, 1);
+            grid_->setRowStretch(0, 0);
         }
     }
 
@@ -509,25 +482,6 @@ class AccountSubHeaderFanLX : public QWidget {
     QPushButton *back_ = nullptr;
 };
 
-// 藏起 PageKit 自带的「‹ 返回」和 16px 标题，换成本页的标题栏。原控件仍留在树上。
-void installAccountHeaderFanLX(QStackedWidget *stack, int index, const QString &title) {
-    auto *page = stack ? stack->widget(index) : nullptr;
-    if (!page)
-        return;
-    for (auto *button : page->findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly)) {
-        if (button->property("role").toString() == QLatin1String("back"))
-            button->hide();
-    }
-    for (auto *label : page->findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly)) {
-        if (label->property("role").toString() == QLatin1String("title"))
-            label->hide();
-    }
-    auto *header = new AccountSubHeaderFanLX(title, page);
-    QObject::connect(header->backButton(), &QPushButton::clicked, stack, [stack] { stack->setCurrentIndex(0); });
-    if (auto *layout = qobject_cast<QVBoxLayout *>(page->layout()))
-        layout->insertWidget(0, header);
-}
-
 constexpr int bindingRowHeightFanLX = 96;
 constexpr int bindingListCapRowsFanLX = 6;
 
@@ -542,19 +496,6 @@ QFrame *manageCardFanLX(QWidget *parent) {
 QLabel *manageTitleFanLX(const QString &text, QWidget *parent) {
     auto *label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("accountManageTitleFanLX"));
-    return label;
-}
-
-QLabel *manageHintFanLX(const QString &text, QWidget *parent) {
-    auto *label = new QLabel(text, parent);
-    label->setObjectName(QStringLiteral("accountManageHintFanLX"));
-    label->setWordWrap(true);
-    return label;
-}
-
-QLabel *manageFieldFanLX(const QString &text, QWidget *parent) {
-    auto *label = new QLabel(text, parent);
-    label->setObjectName(QStringLiteral("accountManageFieldFanLX"));
     return label;
 }
 
@@ -742,7 +683,7 @@ QWidget *bindingEmptyRowFanLX(QWidget *parent) {
     auto *label = new QLabel(QStringLiteral("还没有绑定关系"), row);
     label->setObjectName(QStringLiteral("bindingAccountFanLX"));
     label->setAlignment(Qt::AlignCenter);
-    auto *hint = new QLabel(QStringLiteral("在下方选择两个已开通服务并点「绑定」后，关系会显示在这里。"),
+    auto *hint = new QLabel(QStringLiteral("在「管理绑定」里选择服务并填写对方号码，绑定后会显示在这里。"),
                             row);
     hint->setObjectName(QStringLiteral("bindingEmptyFanLX"));
     hint->setWordWrap(true);
@@ -780,31 +721,21 @@ AccountPageFanLX::AccountPageFanLX(DomainControllerFanLX *controller, QWidget *p
     setAutoFillBackground(true);
     setPalette(pagePalette);
 
-    stackFanLX = new QStackedWidget(this);
-    // 先放首页（下标 0），再依次追加四个子页面；首页入口按钮在 buildHomeFanLX 里按下标跳转。
-    kit::setHomePage(stackFanLX, buildHomeFanLX());
-    if (auto *scroll = qobject_cast<QScrollArea *>(stackFanLX->widget(0))) {
-        scroll->viewport()->setAutoFillBackground(true);
-        auto viewportPalette = scroll->viewport()->palette();
-        viewportPalette.setColor(QPalette::Window, QColor(QStringLiteral("#F6F7F9")));
-        scroll->viewport()->setPalette(viewportPalette);
-    }
-    installAccountHeaderFanLX(stackFanLX,
-                              kit::addSubPage(stackFanLX, QStringLiteral("开通管理"), buildServiceBodyFanLX()),
-                              QStringLiteral("开通管理"));
-    installAccountHeaderFanLX(stackFanLX,
-                              kit::addSubPage(stackFanLX, QStringLiteral("登录管理"), buildLoginBodyFanLX()),
-                              QStringLiteral("登录管理"));
-    installAccountHeaderFanLX(stackFanLX,
-                              kit::addSubPage(stackFanLX, QStringLiteral("绑定管理"), buildBindingBodyFanLX()),
-                              QStringLiteral("绑定管理"));
-    installAccountHeaderFanLX(stackFanLX,
-                              kit::addSubPage(stackFanLX, QStringLiteral("资料与密码"), buildMaintenanceBodyFanLX()),
-                              QStringLiteral("资料与密码"));
+    auto *scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidget(buildHomeFanLX());
+    const QColor pageBg(QStringLiteral("#F6F7F9"));
+    scroll->viewport()->setAutoFillBackground(true);
+    auto viewportPalette = scroll->viewport()->palette();
+    viewportPalette.setColor(QPalette::Window, pageBg);
+    viewportPalette.setColor(QPalette::Base, pageBg);
+    scroll->viewport()->setPalette(viewportPalette);
 
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(12, 12, 12, 12);
-    outer->addWidget(stackFanLX);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+    outer->addWidget(scroll);
 
     // 身份变化与任何写操作成功后都重读视图：界面显示的一定是内存里的最新状态。
     connect(controllerFanLX, &DomainControllerFanLX::dataChangedFanLX, this,
@@ -816,27 +747,13 @@ AccountPageFanLX::AccountPageFanLX(DomainControllerFanLX *controller, QWidget *p
 
 QWidget *AccountPageFanLX::buildHomeFanLX() {
     auto *home = new AccountHomeFanLX();
-    auto *outer = new QVBoxLayout(home);
-    outer->setContentsMargins(12, 12, 12, 12);
-    outer->setSpacing(0);
-
-    auto *column = new QWidget(home);
-    column->setFixedWidth(1040);
-    auto *columnLayout = new QVBoxLayout(column);
-    columnLayout->setContentsMargins(0, 0, 0, 0);
-    columnLayout->setSpacing(16);
-
-    auto *title = new QLabel(QStringLiteral("账号与服务"), column);
-    title->setObjectName(QStringLiteral("accountPageTitleFanLX"));
-    columnLayout->addWidget(title);
-    auto *pageSubtitle = new QLabel(
-        QStringLiteral("查看身份与资料，管理开通、登录、绑定和密码"), column);
-    pageSubtitle->setObjectName(QStringLiteral("accountIdentityHintFanLX"));
-    columnLayout->addWidget(pageSubtitle);
+    auto *columnLayout = new QVBoxLayout(home);
+    columnLayout->setContentsMargins(16, 12, 16, 16);
+    columnLayout->setSpacing(12);
 
     // 当前身份栏：服务名、账号与切换下拉框放在同一条里。选中即切换。
     // 切换被拒（比如该服务还没登录）时，下拉框必须回到真正的当前服务，并弹出原因。
-    auto *identity = new QFrame(column);
+    auto *identity = new QFrame(home);
     identity->setObjectName(QStringLiteral("accountIdentityFanLX"));
     identityLabelFanLX = new QLabel(identity);
     identityLabelFanLX->setObjectName(QStringLiteral("accountIdentityTextFanLX"));
@@ -867,7 +784,7 @@ QWidget *AccountPageFanLX::buildHomeFanLX() {
     columnLayout->addWidget(identity);
 
     // 登录态提示条：当前服务未登录 / 已全部注销 时显示，并给出下一步。
-    bannerFanLX = new QFrame(column);
+    bannerFanLX = new QFrame(home);
     bannerFanLX->setObjectName(QStringLiteral("bannerFanLX"));
     bannerLabelFanLX = new QLabel(bannerFanLX);
     bannerLabelFanLX->setWordWrap(true);
@@ -889,44 +806,20 @@ QWidget *AccountPageFanLX::buildHomeFanLX() {
             QMessageBox::warning(this, QStringLiteral("重新登录失败"), controllerFanLX->lastMessage());
     });
 
-    auto *columns = new AccountColumnsFanLX(column);
-    auto *profile = buildProfileCardFanLX(columns);
-    auto *entries = new QFrame(columns);
-    entries->setObjectName(QStringLiteral("accountEntriesFanLX"));
-    entries->setFrameShape(QFrame::NoFrame);
-    entries->setAttribute(Qt::WA_StyledBackground, true);
-    auto *entryLayout = new QVBoxLayout(entries);
-    entryLayout->setContentsMargins(0, 0, 0, 0);
-    entryLayout->setSpacing(0);
-    const QStringList titles{QStringLiteral("开通管理"), QStringLiteral("登录管理"),
-                             QStringLiteral("绑定管理"), QStringLiteral("资料与密码")};
-    const QStringList details{
-        QStringLiteral("开通 QQ、微信或微博，并查看号码与开通状态。"),
-        QStringLiteral("确认登录、联动已开通的服务，或注销登录。"),
-        QStringLiteral("查看、建立或解除各服务号码的绑定。"),
-        QStringLiteral("分别修改昵称、所在地，或更换登录密码。")};
-    for (int index = 0; index < titles.size(); ++index) {
-        auto *button = accountEntryButtonFanLX(titles.at(index), details.at(index), entries);
-        button->setProperty("lined", index + 1 < titles.size() ? QStringLiteral("true") : QStringLiteral("false"));
-        button->setProperty("edge", index == 0 ? QStringLiteral("first")
-                                                : index + 1 == titles.size() ? QStringLiteral("last")
-                                                                              : QStringLiteral("mid"));
-        entryLayout->addWidget(button);
-        connect(button, &QPushButton::clicked, this, [this, index] { stackFanLX->setCurrentIndex(index + 1); });
-    }
-    columns->setPanels(profile, entries);
-    columnLayout->addWidget(columns);
+    columnLayout->addWidget(buildProfileCardFanLX(home));
 
-    auto *center = new QHBoxLayout();
-    center->setContentsMargins(0, 0, 0, 0);
-    center->addStretch(1);
-    center->addWidget(column, 0, Qt::AlignTop);
-    center->addStretch(1);
-    outer->addLayout(center);
-    outer->addStretch(1);
-
-    home->columnFanLX = column;
-    home->columnsFanLX = columns;
+    auto *mid = new QHBoxLayout();
+    mid->setSpacing(12);
+    auto *serviceColumn = new QVBoxLayout();
+    serviceColumn->setSpacing(12);
+    serviceColumn->addWidget(buildServiceBodyFanLX());
+    serviceColumn->addWidget(buildLoginBodyFanLX());
+    auto *binding = buildBindingBodyFanLX();
+    binding->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mid->addLayout(serviceColumn, 3);
+    mid->addWidget(binding, 2);
+    columnLayout->addLayout(mid);
+    columnLayout->addWidget(buildMaintenanceBodyFanLX());
     return home;
 }
 
@@ -934,12 +827,9 @@ QWidget *AccountPageFanLX::buildProfileCardFanLX(QWidget *parent) {
     auto *frame = new QFrame(parent);
     frame->setObjectName(QStringLiteral("accountProfileFanLX"));
     auto *layout = new QVBoxLayout(frame);
-    layout->setContentsMargins(16, 16, 16, 16);
-    layout->setSpacing(14);
-
-    auto *heading = new QLabel(QStringLiteral("用户基本信息"), frame);
-    heading->setObjectName(QStringLiteral("accountProfileHeadingFanLX"));
-    layout->addWidget(heading);
+    layout->setContentsMargins(14, 10, 14, 10);
+    layout->setSpacing(8);
+    frame->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     const auto labelOf = [frame](const QString &role, const QString &text = QString()) {
         auto *label = new QLabel(text, frame);
@@ -947,82 +837,62 @@ QWidget *AccountPageFanLX::buildProfileCardFanLX(QWidget *parent) {
         return label;
     };
 
-    // 头像（昵称首字）+ 昵称 + 一行账号副标题。
+    auto *heading = new QLabel(QStringLiteral("用户基本信息"), frame);
+    heading->setObjectName(QStringLiteral("accountProfileHeadingFanLX"));
     avatarLabelFanLX = labelOf(QStringLiteral("avatar"));
-    avatarLabelFanLX->setFixedSize(48, 48);
+    avatarLabelFanLX->setFixedSize(36, 36);
     avatarLabelFanLX->setAlignment(Qt::AlignCenter);
     avatarLabelFanLX->setAttribute(Qt::WA_StyledBackground, true);
     nameLabelFanLX = labelOf(QStringLiteral("name"));
-    nameLabelFanLX->setWordWrap(true);
     subtitleLabelFanLX = labelOf(QStringLiteral("caption"));
-    subtitleLabelFanLX->setWordWrap(true);
-    auto *titleColumn = new QVBoxLayout();
-    titleColumn->setSpacing(2);
-    titleColumn->addStretch(1);
-    titleColumn->addWidget(nameLabelFanLX);
-    titleColumn->addWidget(subtitleLabelFanLX);
-    titleColumn->addStretch(1);
-    auto *header = new QHBoxLayout();
-    header->setSpacing(14);
-    header->addWidget(avatarLabelFanLX);
-    header->addLayout(titleColumn, 1);
-    layout->addLayout(header);
+    auto *who = new QVBoxLayout();
+    who->setSpacing(0);
+    who->addWidget(nameLabelFanLX);
+    who->addWidget(subtitleLabelFanLX);
+    auto *head = new QHBoxLayout();
+    head->setSpacing(10);
+    head->addWidget(heading);
+    head->addWidget(avatarLabelFanLX);
+    head->addLayout(who, 1);
+    layout->addLayout(head);
 
-    // 三项统计直接排在资料卡里，不再套一层浅底小卡片。
-    const auto statTile = [&](QLabel *&valueLabel, const QString &caption) {
+    // 统计和详情排成同一行，不再各占一块。
+    const auto fact = [&](QLabel *&valueLabel, const QString &caption, bool stat) {
         auto *tile = new QWidget(frame);
-        tile->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        auto *tileLayout = new QVBoxLayout(tile);
+        auto *tileLayout = new QHBoxLayout(tile);
         tileLayout->setContentsMargins(0, 0, 0, 0);
-        tileLayout->setSpacing(2);
-        valueLabel = new QLabel(tile);
-        valueLabel->setObjectName(QStringLiteral("accountStatValueFanLX"));
-        valueLabel->setAlignment(Qt::AlignCenter);
+        tileLayout->setSpacing(4);
         auto *captionLabel = new QLabel(caption, tile);
-        captionLabel->setObjectName(QStringLiteral("accountStatCaptionFanLX"));
-        captionLabel->setAlignment(Qt::AlignCenter);
-        tileLayout->addWidget(valueLabel);
+        captionLabel->setObjectName(stat ? QStringLiteral("accountStatCaptionFanLX")
+                                         : QStringLiteral("accountProfileHeadingFanLX"));
+        valueLabel = new QLabel(tile);
+        valueLabel->setObjectName(stat ? QStringLiteral("accountStatValueFanLX")
+                                       : QStringLiteral("accountIdentityTextFanLX"));
+        valueLabel->setProperty("role", QStringLiteral("value"));
+        valueLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
         tileLayout->addWidget(captionLabel);
+        tileLayout->addWidget(valueLabel);
         return tile;
     };
-    auto *stats = new QHBoxLayout();
-    stats->setSpacing(12);
-    stats->addWidget(statTile(tAgeValueFanLX, QStringLiteral("T龄（年）")), 1);
-    stats->addWidget(statTile(friendValueFanLX, QStringLiteral("好友")), 1);
-    stats->addWidget(statTile(groupValueFanLX, QStringLiteral("群")), 1);
-    layout->addLayout(stats);
-    auto *hairline = new QFrame(frame);
-    hairline->setObjectName(QStringLiteral("accountHairlineFanLX"));
-    hairline->setFrameShape(QFrame::NoFrame);
-    hairline->setFixedHeight(1);
-    layout->addWidget(hairline);
-
-    // 详情两列：标签是次要色，值是正文色。出生与申请都是日期，不用「时间」。
-    const auto detail = [&](QLabel *&valueLabel, const QString &caption) {
-        valueLabel = labelOf(QStringLiteral("value"));
-        valueLabel->setWordWrap(true);
-        valueLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        auto *column = new QVBoxLayout();
-        column->setSpacing(2);
-        column->addWidget(labelOf(QStringLiteral("caption"), caption));
-        column->addWidget(valueLabel);
-        return column;
-    };
-    auto *details = new QGridLayout();
-    details->setHorizontalSpacing(24);
-    details->setVerticalSpacing(12);
-    details->addLayout(detail(birthValueFanLX, QStringLiteral("出生日期")), 0, 0);
-    details->addLayout(detail(applyValueFanLX, QStringLiteral("号码申请日期")), 0, 1);
-    details->addLayout(detail(locationValueFanLX, QStringLiteral("所在地")), 1, 0);
-    details->addLayout(detail(userIdValueFanLX, QStringLiteral("后台用户 ID")), 1, 1);
-    details->setColumnStretch(0, 1);
-    details->setColumnStretch(1, 1);
-    layout->addLayout(details);
+    auto *facts = new QHBoxLayout();
+    facts->setSpacing(16);
+    facts->addWidget(fact(tAgeValueFanLX, QStringLiteral("T龄（年）"), true));
+    facts->addWidget(fact(friendValueFanLX, QStringLiteral("好友"), true));
+    facts->addWidget(fact(groupValueFanLX, QStringLiteral("群"), true));
+    facts->addWidget(fact(birthValueFanLX, QStringLiteral("出生日期"), false));
+    facts->addWidget(fact(applyValueFanLX, QStringLiteral("号码申请日期"), false));
+    facts->addWidget(fact(locationValueFanLX, QStringLiteral("所在地"), false));
+    facts->addWidget(fact(userIdValueFanLX, QStringLiteral("后台用户 ID"), false));
+    facts->addStretch(1);
+    layout->addLayout(facts);
     return frame;
 }
 
 QWidget *AccountPageFanLX::buildServiceBodyFanLX() {
-    auto *body = new AccountServiceBodyFanLX();
+    auto *body = new QWidget(this);
+    body->setObjectName(QStringLiteral("accountServiceBodyFanLX"));
+    body->setAttribute(Qt::WA_StyledBackground, true);
+    body->setStyleSheet(serviceBodyStyleFanLX());
 
     auto *listCard = new QFrame(body);
     listCard->setObjectName(QStringLiteral("serviceListCardFanLX"));
@@ -1030,7 +900,7 @@ QWidget *AccountPageFanLX::buildServiceBodyFanLX() {
     auto *listLayout = new QVBoxLayout(listCard);
     listLayout->setContentsMargins(16, 16, 16, 12);
     listLayout->setSpacing(12);
-    auto *listTitle = new QLabel(QStringLiteral("服务账号"), listCard);
+    auto *listTitle = new QLabel(QStringLiteral("开通管理"), listCard);
     listTitle->setObjectName(QStringLiteral("serviceCardTitleFanLX"));
     serviceTableFanLX = new ServiceTableFanLX(listCard);
     serviceTableFanLX->setObjectName(QStringLiteral("serviceAccountTableFanLX"));
@@ -1065,10 +935,24 @@ QWidget *AccountPageFanLX::buildServiceBodyFanLX() {
     header->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    listLayout->addWidget(listTitle);
+    auto *openEntry = kit::primaryButton(QStringLiteral("开通新服务"), listCard);
+    openEntry->setMinimumHeight(32);
+    auto *titleRow = new QHBoxLayout();
+    titleRow->setSpacing(12);
+    titleRow->addWidget(listTitle, 0, Qt::AlignVCenter);
+    titleRow->addWidget(openEntry, 0, Qt::AlignVCenter);
+    titleRow->addStretch(1);
+    listLayout->addLayout(titleRow);
     listLayout->addWidget(serviceTableFanLX);
 
-    auto *openCard = new QFrame(body);
+    auto *dialog = new QDialog(this);
+    dialog->setObjectName(QStringLiteral("accountServiceBodyFanLX"));
+    dialog->setWindowTitle(QStringLiteral("开通新服务"));
+    dialog->setModal(true);
+    dialog->setFixedWidth(380);
+    dialog->setWindowFlag(Qt::WindowContextHelpButtonHint, false);
+    dialog->setStyleSheet(serviceBodyStyleFanLX() + QStringLiteral("QDialog{background:#F6F7F9;}"));
+    auto *openCard = new QFrame(dialog);
     openCard->setObjectName(QStringLiteral("serviceOpenCardFanLX"));
     openCard->setFrameShape(QFrame::NoFrame);
     auto *openLayout = new QVBoxLayout(openCard);
@@ -1080,29 +964,30 @@ QWidget *AccountPageFanLX::buildServiceBodyFanLX() {
     typeCaption->setObjectName(QStringLiteral("serviceFieldCaptionFanLX"));
     subscribeComboFanLX = makePlatformComboFanLX(openCard);
     subscribeComboFanLX->setMinimumHeight(36);
-    subscribeComboFanLX->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *numberCaption = new QLabel(QStringLiteral("服务号码"), openCard);
     numberCaption->setObjectName(QStringLiteral("serviceFieldCaptionFanLX"));
     subscribeNumberEditFanLX = new QLineEdit(openCard);
     subscribeNumberEditFanLX->setMinimumHeight(36);
-    subscribeNumberEditFanLX->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *hint = new QLabel(QStringLiteral("号码可以留空，留空时使用推荐号码。"), openCard);
     hint->setObjectName(QStringLiteral("serviceOpenHintFanLX"));
     hint->setWordWrap(true);
     subscribeButtonFanLX = kit::primaryButton(QStringLiteral("开通所选服务"), openCard);
     subscribeButtonFanLX->setMinimumHeight(36);
-    subscribeButtonFanLX->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     openLayout->addWidget(openTitle);
-    openLayout->addSpacing(4);
     openLayout->addWidget(typeCaption);
     openLayout->addWidget(subscribeComboFanLX);
     openLayout->addWidget(numberCaption);
     openLayout->addWidget(subscribeNumberEditFanLX);
     openLayout->addWidget(hint);
-    openLayout->addSpacing(4);
     openLayout->addWidget(subscribeButtonFanLX);
+    auto *dialogLayout = new QVBoxLayout(dialog);
+    dialogLayout->setContentsMargins(16, 16, 16, 16);
+    dialogLayout->addWidget(openCard);
+    connect(openEntry, &QPushButton::clicked, dialog, &QDialog::exec);
 
-    static_cast<AccountServiceBodyFanLX *>(body)->setCards(listCard, openCard);
+    auto *bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(0, 0, 0, 0);
+    bodyLayout->addWidget(listCard);
 
     // 号码留空时给出建议值：QQ / 微博 沿用微X号（课程约定两者共享号码），微信加 wx_ 前缀。
     const auto suggestedNumber = [this] {
@@ -1123,64 +1008,35 @@ QWidget *AccountPageFanLX::buildServiceBodyFanLX() {
 }
 
 QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
-    auto *page = new AccountManagePageFanLX();
-    auto *host = page->column();
-
-    auto *confirmCard = manageCardFanLX(host);
-    auto *confirmLayout = new QVBoxLayout(confirmCard);
-    confirmLayout->setContentsMargins(16, 16, 16, 16);
-    confirmLayout->setSpacing(8);
-    confirmLayout->addWidget(manageTitleFanLX(QStringLiteral("登录服务"), confirmCard));
-    confirmLayout->addWidget(manageHintFanLX(QStringLiteral("选择服务后，确认该服务的登录身份。"), confirmCard));
-    confirmLayout->addSpacing(4);
-    confirmLayout->addWidget(manageFieldFanLX(QStringLiteral("服务"), confirmCard));
-    confirmServiceComboFanLX = makePlatformComboFanLX(confirmCard);
-    confirmServiceComboFanLX->setMinimumHeight(36);
-    confirmLayout->addWidget(confirmServiceComboFanLX);
-    confirmLayout->addSpacing(4);
-    confirmLoginButtonFanLX = kit::primaryButton(QStringLiteral("逐项确认登录"), confirmCard);
-    confirmLoginButtonFanLX->setMinimumHeight(36);
-    confirmLayout->addWidget(confirmLoginButtonFanLX);
-
-    auto *linkCard = manageCardFanLX(host);
-    auto *linkLayout = new QVBoxLayout(linkCard);
-    linkLayout->setContentsMargins(16, 16, 16, 16);
-    linkLayout->setSpacing(8);
-    linkLayout->addWidget(manageTitleFanLX(QStringLiteral("一键联动登录"), linkCard));
-    linkLayout->addWidget(manageHintFanLX(
-        QStringLiteral("一次确认本人已经开通的全部服务。没有待确认的服务时，按钮会停用。"), linkCard));
-    linkLayout->addSpacing(8);
-    // 一键联动：登微X 时已默认联动确认，所以只在"注销过 / 新开通了服务"后有事可做，
-    // refreshFanLX 会据此启用或置灰它。
-    linkAllButtonFanLX = kit::primaryButton(QStringLiteral("一键联动登录"), linkCard);
-    linkAllButtonFanLX->setMinimumHeight(36);
-    linkLayout->addWidget(linkAllButtonFanLX);
-
-    auto *split = new AccountSplitFanLX(host);
-    split->setPanels(confirmCard, linkCard, 1, 1, 880);
-    page->columnLayout()->addWidget(split);
-
-    auto *logoutCard = manageCardFanLX(host);
-    auto *logoutLayout = new QVBoxLayout(logoutCard);
-    logoutLayout->setContentsMargins(16, 16, 16, 16);
-    logoutLayout->setSpacing(8);
-    logoutLayout->addWidget(manageTitleFanLX(QStringLiteral("注销"), logoutCard));
-    logoutLayout->addWidget(manageHintFanLX(
-        QStringLiteral("注销当前服务只退出正在使用的身份。全部注销会退出所有已登录服务。"), logoutCard));
-    logoutButtonFanLX = kit::dangerButton(QStringLiteral("注销当前服务"), logoutCard);
-    logoutAllButtonFanLX = kit::dangerButton(QStringLiteral("全部注销"), logoutCard);
-    logoutButtonFanLX->setMinimumHeight(36);
-    logoutAllButtonFanLX->setMinimumHeight(36);
+    auto *card = manageCardFanLX(this);
+    card->setStyleSheet(accountManageStyleFanLX());
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(8);
+    layout->addWidget(manageTitleFanLX(QStringLiteral("登录管理"), card));
+    confirmServiceComboFanLX = makePlatformComboFanLX(card);
+    confirmServiceComboFanLX->setMinimumHeight(32);
+    confirmLoginButtonFanLX = kit::primaryButton(QStringLiteral("逐项确认登录"), card);
+    linkAllButtonFanLX = kit::primaryButton(QStringLiteral("一键联动登录"), card);
+    confirmLoginButtonFanLX->setMinimumHeight(32);
+    linkAllButtonFanLX->setMinimumHeight(32);
+    auto *confirmRow = new QHBoxLayout();
+    confirmRow->setSpacing(8);
+    confirmRow->addWidget(confirmServiceComboFanLX, 1);
+    confirmRow->addWidget(confirmLoginButtonFanLX);
+    confirmRow->addWidget(linkAllButtonFanLX);
+    layout->addLayout(confirmRow);
+    logoutButtonFanLX = kit::dangerButton(QStringLiteral("注销当前服务"), card);
+    logoutAllButtonFanLX = kit::dangerButton(QStringLiteral("全部注销"), card);
+    logoutButtonFanLX->setMinimumHeight(32);
+    logoutAllButtonFanLX->setMinimumHeight(32);
     auto *logoutRow = new QHBoxLayout();
-    logoutRow->setSpacing(12);
+    logoutRow->setSpacing(8);
     logoutRow->addWidget(logoutButtonFanLX);
     logoutRow->addWidget(logoutAllButtonFanLX);
     logoutRow->addStretch(1);
-    logoutLayout->addSpacing(4);
-    logoutLayout->addLayout(logoutRow);
-    page->columnLayout()->addWidget(logoutCard);
+    layout->addLayout(logoutRow);
 
-    // 课设要求 5：登微X 后，本人已开通的其它服务简单确认即视为自动登录。
     connect(linkAllButtonFanLX, &QPushButton::clicked, this,
             [this] { controllerFanLX->confirmAllServices(); });
     connect(confirmLoginButtonFanLX, &QPushButton::clicked, this, [this] {
@@ -1191,63 +1047,43 @@ QWidget *AccountPageFanLX::buildLoginBodyFanLX() {
             [this] { controllerFanLX->logoutCurrent(false); });
     connect(logoutAllButtonFanLX, &QPushButton::clicked, this,
             [this] { controllerFanLX->logoutCurrent(true); });
-    return page;
+    return card;
 }
 
 QWidget *AccountPageFanLX::buildBindingBodyFanLX() {
-    auto *page = new AccountManagePageFanLX();
-    auto *host = page->column();
-
-    auto *listCard = manageCardFanLX(host);
-    auto *listLayout = new QVBoxLayout(listCard);
-    listLayout->setContentsMargins(16, 16, 16, 14);
-    listLayout->setSpacing(10);
-    listLayout->addWidget(manageTitleFanLX(QStringLiteral("已绑定关系"), listCard));
-    listLayout->addWidget(manageHintFanLX(
-        QStringLiteral("当前微X身份下各服务账号之间已建立的绑定。"),
-        listCard));
-    listLayout->addWidget(manageHintFanLX(QStringLiteral("本人各服务号码之间已经建立的对应关系。"), listCard));
-    bindingListFanLX = new QListWidget(listCard);
+    auto *card = manageCardFanLX(this);
+    card->setStyleSheet(accountManageStyleFanLX());
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(8);
+    layout->addWidget(manageTitleFanLX(QStringLiteral("绑定管理"), card));
+    bindServiceComboFanLX = makePlatformComboFanLX(card);
+    bindServiceComboFanLX->setMinimumHeight(36);
+    layout->addWidget(bindServiceComboFanLX);
+    bindAccountEditFanLX = new QLineEdit(card);
+    bindAccountEditFanLX->setPlaceholderText(QStringLiteral("对方号码，留空则使用本人号码"));
+    bindAccountEditFanLX->setMinimumHeight(36);
+    layout->addWidget(bindAccountEditFanLX);
+    bindButtonFanLX = kit::primaryButton(QStringLiteral("绑定"), card);
+    unbindButtonFanLX = kit::dangerButton(QStringLiteral("解绑"), card);
+    bindButtonFanLX->setMinimumHeight(36);
+    unbindButtonFanLX->setMinimumHeight(36);
+    auto *actions = new QHBoxLayout();
+    actions->setSpacing(8);
+    actions->addWidget(bindButtonFanLX, 1);
+    actions->addWidget(unbindButtonFanLX, 1);
+    layout->addLayout(actions);
+    bindingListFanLX = new QListWidget(card);
     bindingListFanLX->setObjectName(QStringLiteral("bindingListFanLX"));
     bindingListFanLX->setFrameShape(QFrame::NoFrame);
     bindingListFanLX->setSpacing(0);
     bindingListFanLX->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     bindingListFanLX->setSelectionMode(QAbstractItemView::NoSelection);
     bindingListFanLX->setFocusPolicy(Qt::NoFocus);
-    listLayout->addWidget(bindingListFanLX);
+    bindingListFanLX->setMaximumHeight(96);
+    layout->addWidget(bindingListFanLX);
+    layout->addStretch(1);
     refillBindingListFanLX(bindingListFanLX, {});
-
-    auto *formCard = manageCardFanLX(host);
-    auto *formLayout = new QVBoxLayout(formCard);
-    formLayout->setContentsMargins(20, 18, 20, 18);
-    formLayout->setSpacing(8);
-    formLayout->addWidget(manageTitleFanLX(QStringLiteral("管理绑定"), formCard));
-    formLayout->addWidget(manageHintFanLX(
-        QStringLiteral("填写要关联的对方号码。留空时使用本人在该服务下的号码。"), formCard));
-    formLayout->addSpacing(4);
-    formLayout->addWidget(manageFieldFanLX(QStringLiteral("服务"), formCard));
-    bindServiceComboFanLX = makePlatformComboFanLX(formCard);
-    bindServiceComboFanLX->setMinimumHeight(36);
-    formLayout->addWidget(bindServiceComboFanLX);
-    formLayout->addWidget(manageFieldFanLX(QStringLiteral("对方号码"), formCard));
-    bindAccountEditFanLX = new QLineEdit(formCard);
-    bindAccountEditFanLX->setPlaceholderText(QStringLiteral("留空则使用本人号码"));
-    bindAccountEditFanLX->setMinimumHeight(36);
-    formLayout->addWidget(bindAccountEditFanLX);
-    formLayout->addSpacing(4);
-    bindButtonFanLX = kit::primaryButton(QStringLiteral("绑定"), formCard);
-    unbindButtonFanLX = kit::dangerButton(QStringLiteral("解绑"), formCard);
-    bindButtonFanLX->setMinimumHeight(36);
-    unbindButtonFanLX->setMinimumHeight(36);
-    auto *actions = new QHBoxLayout();
-    actions->setSpacing(12);
-    actions->addWidget(bindButtonFanLX, 1);
-    actions->addWidget(unbindButtonFanLX, 1);
-    formLayout->addLayout(actions);
-
-    auto *split = new AccountSplitFanLX(host);
-    split->setPanels(listCard, formCard, 58, 42, 920);
-    page->columnLayout()->addWidget(split);
 
     const auto targetAccount = [this] {
         const auto service = bindServiceComboFanLX->currentText();
@@ -1261,77 +1097,56 @@ QWidget *AccountPageFanLX::buildBindingBodyFanLX() {
     connect(unbindButtonFanLX, &QPushButton::clicked, this, [this, targetAccount] {
         controllerFanLX->bindService(bindServiceComboFanLX->currentText(), targetAccount(), true);
     });
-    return page;
+    return card;
 }
 
 QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
-    auto *page = new AccountManagePageFanLX();
-    auto *host = page->column();
-
-    // 单项修改：两个字段各有自己的保存按钮，改一个不会动另一个。
-    auto *profileCard = manageCardFanLX(host);
-    auto *profileLayout = new QVBoxLayout(profileCard);
-    profileLayout->setContentsMargins(16, 16, 16, 16);
-    profileLayout->setSpacing(8);
-    profileLayout->addWidget(manageTitleFanLX(QStringLiteral("个人资料"), profileCard));
-    profileLayout->addWidget(
-        manageHintFanLX(QStringLiteral("昵称和所在地分开保存，修改一项不会改动另一项。"), profileCard));
-    profileLayout->addSpacing(4);
-    profileLayout->addWidget(manageFieldFanLX(QStringLiteral("昵称"), profileCard));
-    nicknameEditFanLX = new QLineEdit(profileCard);
-    nicknameEditFanLX->setPlaceholderText(QStringLiteral("输入新昵称"));
+    auto *card = manageCardFanLX(this);
+    card->setStyleSheet(accountManageStyleFanLX());
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(8);
+    layout->addWidget(manageTitleFanLX(QStringLiteral("资料与密码"), card));
+    nicknameEditFanLX = new QLineEdit(card);
+    nicknameEditFanLX->setPlaceholderText(QStringLiteral("新昵称"));
     nicknameEditFanLX->setMinimumHeight(36);
-    saveNicknameButtonFanLX = kit::primaryButton(QStringLiteral("保存昵称"), profileCard);
+    saveNicknameButtonFanLX = kit::primaryButton(QStringLiteral("保存昵称"), card);
     saveNicknameButtonFanLX->setMinimumHeight(36);
-    profileLayout->addWidget(nicknameEditFanLX);
-    profileLayout->addWidget(saveNicknameButtonFanLX, 0, Qt::AlignLeft);
-    profileLayout->addWidget(manageFieldFanLX(QStringLiteral("所在地"), profileCard));
-    locationEditFanLX = new QLineEdit(profileCard);
-    locationEditFanLX->setPlaceholderText(QStringLiteral("输入新所在地"));
+    locationEditFanLX = new QLineEdit(card);
+    locationEditFanLX->setPlaceholderText(QStringLiteral("新所在地"));
     locationEditFanLX->setMinimumHeight(36);
-    saveLocationButtonFanLX = kit::primaryButton(QStringLiteral("保存所在地"), profileCard);
+    saveLocationButtonFanLX = kit::primaryButton(QStringLiteral("保存所在地"), card);
     saveLocationButtonFanLX->setMinimumHeight(36);
-    profileLayout->addWidget(locationEditFanLX);
-    profileLayout->addWidget(saveLocationButtonFanLX, 0, Qt::AlignLeft);
-
-    auto *passwordCard = manageCardFanLX(host);
-    auto *passwordLayout = new QVBoxLayout(passwordCard);
-    passwordLayout->setContentsMargins(16, 16, 16, 16);
-    passwordLayout->setSpacing(8);
-    passwordLayout->addWidget(manageTitleFanLX(QStringLiteral("修改密码"), passwordCard));
-    passwordLayout->addWidget(
-        manageHintFanLX(QStringLiteral("输入当前密码，新密码需要再填写一次。"), passwordCard));
-    passwordLayout->addSpacing(4);
-    passwordLayout->addWidget(manageFieldFanLX(QStringLiteral("当前密码"), passwordCard));
-    oldPasswordEditFanLX = new QLineEdit(passwordCard);
+    oldPasswordEditFanLX = new QLineEdit(card);
     oldPasswordEditFanLX->setEchoMode(QLineEdit::Password);
     oldPasswordEditFanLX->setPlaceholderText(QStringLiteral("当前密码"));
     oldPasswordEditFanLX->setMinimumHeight(36);
-    passwordLayout->addWidget(oldPasswordEditFanLX);
-    passwordLayout->addWidget(manageFieldFanLX(QStringLiteral("新密码"), passwordCard));
-    newPasswordEditFanLX = new QLineEdit(passwordCard);
+    newPasswordEditFanLX = new QLineEdit(card);
     newPasswordEditFanLX->setEchoMode(QLineEdit::Password);
     newPasswordEditFanLX->setPlaceholderText(QStringLiteral("新密码"));
     newPasswordEditFanLX->setMinimumHeight(36);
-    passwordLayout->addWidget(newPasswordEditFanLX);
-    passwordLayout->addWidget(manageFieldFanLX(QStringLiteral("确认新密码"), passwordCard));
-    repeatPasswordEditFanLX = new QLineEdit(passwordCard);
+    repeatPasswordEditFanLX = new QLineEdit(card);
     repeatPasswordEditFanLX->setEchoMode(QLineEdit::Password);
     repeatPasswordEditFanLX->setPlaceholderText(QStringLiteral("再次输入新密码"));
     repeatPasswordEditFanLX->setMinimumHeight(36);
-    passwordLayout->addWidget(repeatPasswordEditFanLX);
-    passwordLayout->addSpacing(4);
-    changePasswordButtonFanLX = kit::primaryButton(QStringLiteral("修改密码"), passwordCard);
+    changePasswordButtonFanLX = kit::primaryButton(QStringLiteral("修改密码"), card);
     changePasswordButtonFanLX->setMinimumHeight(36);
-    passwordLayout->addWidget(changePasswordButtonFanLX, 0, Qt::AlignLeft);
-
-    auto *split = new AccountSplitFanLX(host);
-    split->setPanels(profileCard, passwordCard, 1, 1, 900);
-    page->columnLayout()->addWidget(split);
-
-    hintLabelFanLX = kit::hintLabel(host);
+    auto *fields = new QHBoxLayout();
+    fields->setSpacing(8);
+    fields->addWidget(nicknameEditFanLX, 1);
+    fields->addWidget(saveNicknameButtonFanLX);
+    fields->addSpacing(8);
+    fields->addWidget(locationEditFanLX, 1);
+    fields->addWidget(saveLocationButtonFanLX);
+    fields->addSpacing(8);
+    fields->addWidget(oldPasswordEditFanLX, 1);
+    fields->addWidget(newPasswordEditFanLX, 1);
+    fields->addWidget(repeatPasswordEditFanLX, 1);
+    fields->addWidget(changePasswordButtonFanLX);
+    layout->addLayout(fields);
+    hintLabelFanLX = kit::hintLabel(card);
     hintLabelFanLX->setObjectName(QStringLiteral("accountManageResultFanLX"));
-    page->columnLayout()->addWidget(hintLabelFanLX);
+    layout->addWidget(hintLabelFanLX);
 
     connect(saveNicknameButtonFanLX, &QPushButton::clicked, this, [this] {
         const auto nickname = nicknameEditFanLX->text().trimmed();
@@ -1370,7 +1185,7 @@ QWidget *AccountPageFanLX::buildMaintenanceBodyFanLX() {
             setAccountHintFanLX(hintLabelFanLX, QString(), QString());
         }
     });
-    return page;
+    return card;
 }
 
 void AccountPageFanLX::refreshFanLX() {
@@ -1428,7 +1243,7 @@ void AccountPageFanLX::refreshFanLX() {
         avatarLabelFanLX->setText(glyph);
         // 控件自己的样式表盖过页面样式，头像底色才跟聊天、好友列表是同一套。
         avatarLabelFanLX->setStyleSheet(
-            QStringLiteral("background:%1;color:#ffffff;border-radius:24px;font-size:20px;font-weight:600;")
+            QStringLiteral("background:%1;color:#ffffff;border-radius:18px;font-size:16px;font-weight:600;")
                 .arg(seed.isEmpty() ? theme::textMuted : theme::avatarColor(seed)));
     };
     if (!profile.valid) {

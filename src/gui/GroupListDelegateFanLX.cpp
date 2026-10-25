@@ -1,4 +1,5 @@
 #include "gui/GroupListDelegateFanLX.h"
+#include "gui/AppThemeFanLX.h"
 
 #include <QFontMetrics>
 #include <QPainter>
@@ -9,10 +10,10 @@ namespace {
 
 QColor roleDotColorFanLX(const QString &text) {
     if (text.contains(QStringLiteral("群主")))
-        return QColor(QStringLiteral("#f5a623"));
+        return QColor(theme::warning);
     if (text.contains(QStringLiteral("管理员")))
-        return QColor(QStringLiteral("#c0c4cc"));
-    return QColor(QStringLiteral("#909399"));
+        return QColor(theme::brand);
+    return QColor(theme::textMuted);
 }
 
 QString archiveBadgeFanLX(const QString &text, QColor *background, QColor *foreground) {
@@ -21,27 +22,27 @@ QString archiveBadgeFanLX(const QString &text, QColor *background, QColor *foreg
     if (!yes && !no)
         return {};
     if (yes) {
-        *background = QColor(QStringLiteral("#52c41a"));
+        *background = QColor(theme::success);
         *foreground = QColor(QStringLiteral("#ffffff"));
         return QStringLiteral("是");
     }
-    *background = QColor(QStringLiteral("#c0c4cc"));
-    *foreground = QColor(QStringLiteral("#606266"));
+    *background = QColor(theme::line);
+    *foreground = QColor(theme::textSecondary);
     return QStringLiteral("否");
 }
 
 void paintMemberRowFanLX(QPainter *painter, const QStyleOptionViewItem &option, const QString &text) {
     const bool selected = option.state.testFlag(QStyle::State_Selected);
     const bool hover = option.state.testFlag(QStyle::State_MouseOver);
-    QColor background(QStringLiteral("#ffffff"));
+    QColor background(theme::panel);
     if (selected)
-        background = QColor(QStringLiteral("#e3eeff"));
+        background = QColor(theme::brandSoft);
     else if (hover)
-        background = QColor(QStringLiteral("#f0f7ff"));
+        background = QColor(theme::canvas);
     painter->fillRect(option.rect, background);
     if (selected) {
         painter->fillRect(QRect(option.rect.left(), option.rect.top(), 3, option.rect.height()),
-                          QColor(QStringLiteral("#2f81f7")));
+                          QColor(theme::brand));
     }
 
     constexpr int kDot = 8;
@@ -53,7 +54,7 @@ void paintMemberRowFanLX(QPainter *painter, const QStyleOptionViewItem &option, 
 
     QRect textRect = option.rect.adjusted(dotX - option.rect.left() + kDot + 8, 0, -10, 0);
     painter->setFont(option.font);
-    painter->setPen(selected ? QColor(QStringLiteral("#1f2328")) : QColor(QStringLiteral("#606266")));
+    painter->setPen(selected ? QColor(theme::text) : QColor(theme::textSecondary));
     const auto shown = QFontMetrics(option.font).elidedText(text, Qt::ElideRight, textRect.width());
     painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, shown);
 }
@@ -62,23 +63,23 @@ void paintCardRowFanLX(QPainter *painter, const QStyleOptionViewItem &option, co
                        const QString &badge, const QColor &badgeBackground, const QColor &badgeForeground) {
     const bool selected = option.state.testFlag(QStyle::State_Selected);
     const bool hover = option.state.testFlag(QStyle::State_MouseOver);
-    QColor background(QStringLiteral("#ffffff"));
+    QColor background(theme::panel);
     if (selected)
-        background = QColor(QStringLiteral("#e3eeff"));
+        background = QColor(theme::brandSoft);
     else if (hover)
-        background = QColor(QStringLiteral("#f7f9fc"));
+        background = QColor(theme::canvas);
 
     painter->setRenderHint(QPainter::Antialiasing, true);
     painter->setPen(Qt::NoPen);
     painter->setBrush(background);
     const QRect card = option.rect.adjusted(4, 3, -4, -4);
-    painter->drawRoundedRect(card, 6, 6);
+    painter->drawRoundedRect(card, 8, 8);
 
     painter->setRenderHint(QPainter::Antialiasing, false);
     const int lineWidth = option.rect.width() - 20;
     if (lineWidth > 0) {
         painter->fillRect(QRect(option.rect.left() + 10, option.rect.bottom(), lineWidth, 1),
-                          QColor(QStringLiteral("#ebeef5")));
+                          QColor(theme::line));
     }
 
     QRect textRect = card.adjusted(12, 0, -12, 0);
@@ -106,7 +107,7 @@ void paintCardRowFanLX(QPainter *painter, const QStyleOptionViewItem &option, co
     }
 
     painter->setFont(option.font);
-    painter->setPen(QColor(QStringLiteral("#606266")));
+    painter->setPen(QColor(theme::text));
     const auto shown = metrics.elidedText(text, Qt::ElideRight, qMax(0, textRect.width()));
     painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, shown);
 }
@@ -132,7 +133,7 @@ void GroupListDelegateFanLX::paint(QPainter *painter, const QStyleOptionViewItem
     QColor badgeForeground(QStringLiteral("#ffffff"));
     if (kindFanLX == Kind::Pending && text.contains(QStringLiteral("Pending"))) {
         badge = QStringLiteral("Pending");
-        badgeBackground = QColor(QStringLiteral("#f5a623"));
+        badgeBackground = QColor(theme::warning);
     } else if (kindFanLX == Kind::Discussion) {
         badge = archiveBadgeFanLX(text, &badgeBackground, &badgeForeground);
     }

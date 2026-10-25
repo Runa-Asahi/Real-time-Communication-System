@@ -38,7 +38,7 @@ QPushButton *linkButtonFanLX(const QString &text, QWidget *parent) {
 } // namespace
 
 LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
-    setWindowTitle(theme::appDisplayName + QStringLiteral(" — 登录"));
+    setWindowTitle(QStringLiteral("登录"));
     setWindowIcon(theme::appIcon());
     // 登录窗宽度固定，高度只跟着内容走。可拉伸粗边框在 150% 缩放下会让 Windows
     // 把客户区撑高约一行，从而触发 setGeometry 警告。细对话框边框没有这块隐形边距。

@@ -61,11 +61,27 @@ namespace fanlxGui {
 
 namespace {
 
+// 库里的时间是服务器 UTC（带 Z）。气泡和会话列表要跟本机时钟对齐，只取本地时分。
 QString chatClockFanLX(const QString &time) {
+    if (time.isEmpty())
+        return time;
+    const auto utc = QDateTime::fromString(time, Qt::ISODate);
+    if (utc.isValid())
+        return utc.toLocalTime().toString(QStringLiteral("HH:mm"));
     const auto mark = time.indexOf(QLatin1Char('T'));
     if (mark >= 0 && time.size() >= mark + 6)
         return time.mid(mark + 1, 5);
     return time;
+}
+
+// Windows 会在标题末尾再追加一次 applicationDisplayName（Ciallo）。
+// 这里只写当前会话和服务，不写产品名，也不写 d|账号|账号 这种会话键。
+QString windowCaptionFanLX(const QString &subject, const QString &service) {
+    if (subject.isEmpty())
+        return service;
+    if (service.isEmpty())
+        return subject;
+    return QStringLiteral("%1 · %2").arg(subject, service);
 }
 
 // ---------- 聊天页视觉规范（只作用于聊天页，不影响账号 / 好友 / 群页签） ----------
@@ -314,9 +330,7 @@ class ConversationDelegateFanLX : public QStyledItemDelegate {
         auto subtitle = index.data(ConversationListModelFanLX::SubtitleRoleFanLX).toString();
         subtitle.replace(QLatin1Char('\n'), QLatin1Char(' '));
         const bool emptySubtitle = subtitle.trimmed().isEmpty();
-        auto when = index.data(ConversationListModelFanLX::TimeRoleFanLX).toString();
-        if (when.size() >= 16)
-            when = when.mid(11, 5);
+        const auto when = chatClockFanLX(index.data(ConversationListModelFanLX::TimeRoleFanLX).toString());
         const int timeWidth = when.isEmpty() ? 0 : subM.horizontalAdvance(when) + 8;
         const QRect subRect(textLeft, content.top() + titleRowH + kLineGap,
                             std::max(0, content.right() - textLeft - timeWidth + 1), subM.height());
@@ -685,7 +699,7 @@ MainWindowFanLX::MainWindowFanLX(ChatControllerFanLX *controller, DomainControll
     : QMainWindow(parent), controllerFanLX(controller), domainFanLX(domain), accountFanLX(account),
       storageBackendFanLX(storageBackend) {
     loadApplicationStyleFanLX();
-    setWindowTitle(theme::appDisplayName + QStringLiteral(" — QQ 客户端"));
+    setWindowTitle(windowCaptionFanLX(QString(), QStringLiteral("QQ")));
     setWindowIcon(theme::appIcon());
     resize(1180, 760);
     // 逻辑像素。150% / 200% 下窗口仍能落到常见桌面里，具体下限由分栏最小宽度再抬高。
@@ -1001,17 +1015,25 @@ void MainWindowFanLX::buildMenusFanLX() {
 
     auto *tools = bar->addMenu(QStringLiteral("工具"));
     tuneMenu(tools);
-    tools->addAction(QStringLiteral("聊天记录查询…"), this, &MainWindowFanLX::onSearchFanLX);
-    tools->addAction(QStringLiteral("刷新授权目录"), this, [this] { controllerFanLX->requestDirectory(); });
-    tools->addAction(QStringLiteral("刷新会话列表"), this, [this] { controllerFanLX->requestConversations(); });
+    // 聊天记录留在聊天标题栏的按钮上。菜单里再放一份会和那个按钮打开同一个窗口。
+    auto *directoryAction =
+        tools->addAction(QStringLiteral("刷新授权目录"), this, [this] { controllerFanLX->requestDirectory(); });
+    directoryAction->setStatusTip(QStringLiteral(
+        "向聊天服务器要当前服务可聊天的好友、群和临时会话额度，并补进左侧会话列表。不改好友页和群页。"));
+    auto *conversationAction =
+        tools->addAction(QStringLiteral("刷新会话列表"), this, [this] { controllerFanLX->requestConversations(); });
+    conversationAction->setStatusTip(
+        QStringLiteral("从本机聊天库重读会话摘要和未读数。不读取领域库，也不向服务器要授权目录。"));
 
     if (domainFanLX && domainFanLX->opened()) {
         auto *domainMenu = bar->addMenu(QStringLiteral("领域数据"));
         tuneMenu(domainMenu);
-        domainMenu->addAction(QStringLiteral("重新读取好友与群列表"), this, [this] {
+        auto *reloadDomain = domainMenu->addAction(QStringLiteral("重新读取好友与群列表"), this, [this] {
             emit domainFanLX->dataChangedFanLX();
             statusFanLX->setText(QStringLiteral("已重新读取内存中的领域数据（源文件在启动时已加载）"));
         });
+        reloadDomain->setStatusTip(QStringLiteral(
+            "把内存里已经加载的好友页和群页再画一遍。不读文件，也不向聊天服务器要授权目录。"));
         domainMenu->addAction(QStringLiteral("立即写回文件（收尾提交）"), this, [this] {
             const auto directory = domainFanLX->directory();
             domainFanLX->saveAndClose();
@@ -1318,31 +1340,23 @@ void MainWindowFanLX::refreshHeaderFanLX() {
     if (serviceLabelFanLX && !serviceLabelFanLX->property("alertFanLX").toBool())
         setChatServiceStatusFanLX(serviceLabelFanLX, subtitle, false);
     const auto current = controllerFanLX->currentConversation();
-    // 聊天标题只显示会话名称。类型颜色留在左侧列表。
-    if (auto *chatTitle = findChild<QLabel *>(QStringLiteral("chatTitleFanLX"))) {
-        QString titleText = QStringLiteral("未选择会话");
-        if (!current.isEmpty()) {
-            QString itemTitle;
-            bool group = controllerFanLX->currentConversationIsGroup();
-            for (const auto &item : controllerFanLX->conversations()) {
-                if (item.key == current) {
-                    itemTitle = item.title;
-                    group = item.group;
-                    break;
-                }
-            }
-            titleText = chatConversationTitleFanLX(current, chatAccount, group, itemTitle);
-        }
-        chatTitle->setText(titleText);
-    }
+    // 聊天标题和窗口标题用同一句人话：好友名或「群聊 1001」，不带 [好友] 和会话键。
+    QString titleText = QStringLiteral("未选择会话");
     if (!current.isEmpty()) {
-        // 窗口标题仍带类型标志，便于从任务栏区分当前打开的是群还是好友。
-        const auto kind = controllerFanLX->currentConversationKindText();
-        const auto title = kind.isEmpty() ? current : QStringLiteral("[%1] %2").arg(kind, current);
-        setWindowTitle(theme::appDisplayName + QStringLiteral(" — %1（%2）").arg(title, chatService));
-    } else {
-        setWindowTitle(theme::appDisplayName + QStringLiteral(" — %1 客户端").arg(chatService));
+        QString itemTitle;
+        bool group = controllerFanLX->currentConversationIsGroup();
+        for (const auto &item : controllerFanLX->conversations()) {
+            if (item.key == current) {
+                itemTitle = item.title;
+                group = item.group;
+                break;
+            }
+        }
+        titleText = chatConversationTitleFanLX(current, chatAccount, group, itemTitle);
     }
+    if (auto *chatTitle = findChild<QLabel *>(QStringLiteral("chatTitleFanLX")))
+        chatTitle->setText(titleText);
+    setWindowTitle(windowCaptionFanLX(current.isEmpty() ? QString() : titleText, chatService));
     if (tabsFanLX)
         syncShellFanLX(tabsFanLX->currentIndex());
 }

@@ -1,11 +1,11 @@
 /* 群页外观。MainWindowFanLX 构造时经 QApplication::setStyleSheet 加载。
    选择器都挂在 QWidget#groupPageFanLX 下，避免改到聊天、好友、账号页和对话框。
-   层次只靠底色和边框，不用 box-shadow，也不用 QGraphicsEffect。 */
+   色值、圆角和字号与 AppThemeFanLX / 好友页 / 账号页同一套。 */
 
 QWidget#groupPageFanLX {
     background: #F6F7F9;
-    color: #1f2328;
-    font-size: 13px;
+    color: #1F2329;
+    font-size: 14px;
     font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 }
 
@@ -16,41 +16,41 @@ QWidget#groupViewportFanLX {
 }
 
 QWidget#groupPageFanLX QFrame#card {
-    background: #ffffff;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
+    background: #FFFFFF;
+    border: 1px solid #E6E8EE;
+    border-radius: 12px;
 }
 
 QWidget#groupPageFanLX QLabel[role="pageTitle"],
 QWidget#groupPageFanLX QLabel[role="title"] {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 600;
-    color: #1f2328;
+    color: #1F2329;
     background: transparent;
 }
 
 QWidget#groupPageFanLX QLabel[role="sectionTitle"] {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
-    color: #1f2328;
+    color: #1F2329;
     background: transparent;
 }
 
 QWidget#groupPageFanLX QLabel[role="hint"] {
-    color: #909399;
-    font-size: 12px;
+    color: #5B6472;
+    font-size: 13px;
     background: transparent;
 }
 
 QWidget#groupPageFanLX QLabel[fanlxKind="scope"] {
-    color: #909399;
+    color: #5B6472;
     font-size: 13px;
     font-weight: 400;
     background: transparent;
 }
 
 QWidget#groupPageFanLX QLabel[role="empty"] {
-    color: #909399;
+    color: #8A94A3;
     font-size: 13px;
     background: transparent;
 }
@@ -68,7 +68,7 @@ QWidget#groupPageFanLX QGroupBox {
     border: none;
     margin: 0;
     padding: 0;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 QWidget#groupPageFanLX QGroupBox::title {
@@ -79,20 +79,20 @@ QWidget#groupPageFanLX QGroupBox::title {
 }
 
 QWidget#groupPageFanLX QLineEdit {
-    background: #ffffff;
-    color: #1f2328;
-    border: 1px solid #dcdfe6;
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 13px;
-    min-height: 20px;
+    background: #FFFFFF;
+    color: #1F2329;
+    border: 1px solid #E6E8EE;
+    border-radius: 8px;
+    padding: 0px 10px;
+    font-size: 14px;
+    min-height: 36px;
     selection-background-color: #E8EFFD;
-    selection-color: #1f2328;
+    selection-color: #1F2329;
 }
 
 QWidget#groupPageFanLX QLineEdit[fanlxKind="mono"] {
     font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-    color: #606266;
+    color: #5B6472;
 }
 
 QWidget#groupPageFanLX QLineEdit:focus {
@@ -101,30 +101,29 @@ QWidget#groupPageFanLX QLineEdit:focus {
 
 QWidget#groupPageFanLX QLineEdit:disabled {
     background: #F6F7F9;
-    color: #a8abb2;
+    color: #8A94A3;
 }
 
 QWidget#groupPageFanLX QListView,
 QWidget#groupPageFanLX QListWidget {
-    background: #ffffff;
-    color: #606266;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
+    background: #FFFFFF;
+    color: #1F2329;
+    border: 1px solid #E6E8EE;
+    border-radius: 12px;
     outline: none;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 QWidget#groupPageFanLX QListView::item,
 QWidget#groupPageFanLX QListWidget::item {
-    padding: 12px 12px;
+    padding: 10px 12px;
     border-left: 3px solid transparent;
-    color: #606266;
+    color: #1F2329;
 }
 
 QWidget#groupPageFanLX QListView::item:hover,
 QWidget#groupPageFanLX QListWidget::item:hover {
-    background: #E8EFFD;
+    background: #F3F5F8;
 }
 
 QWidget#groupPageFanLX QListView::item:selected,
@@ -133,30 +132,28 @@ QWidget#groupPageFanLX QListView::item:selected:hover,
 QWidget#groupPageFanLX QListWidget::item:selected:hover {
     background: #E8EFFD;
     border-left: 3px solid #2563EB;
-    color: #1f2328;
+    color: #1F2329;
 }
 
 QWidget#groupPageFanLX QPlainTextEdit {
-    background: #fafbfc;
-    color: #303133;
-    border: 1px solid #e4e7ed;
-    border-radius: 6px;
+    background: #F3F5F8;
+    color: #1F2329;
+    border: 1px solid #E6E8EE;
+    border-radius: 8px;
     padding: 8px 10px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-    font-size: 13px;
+    font-size: 14px;
     selection-background-color: #E8EFFD;
-    selection-color: #1f2328;
+    selection-color: #1F2329;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="primary"] {
     background: #2563EB;
-    color: #ffffff;
+    color: #FFFFFF;
     border: none;
-    border-radius: 6px;
-    padding: 6px 16px;
-    min-width: 120px;
-    min-height: 32px;
-    font-size: 13px;
+    border-radius: 8px;
+    padding: 0px 16px;
+    min-height: 36px;
+    font-size: 14px;
     font-weight: 600;
 }
 
@@ -169,50 +166,52 @@ QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:pressed {
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="primary"]:disabled {
-    background: #c5ccd3;
-    color: #ffffff;
+    background: #E6E8EE;
+    color: #8A94A3;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="danger"] {
-    background: #ffffff;
-    color: #e5484d;
-    border: 1px solid #e5484d;
-    border-radius: 6px;
-    padding: 6px 16px;
-    min-width: 120px;
-    min-height: 32px;
-    font-size: 13px;
+    background: #FFFFFF;
+    color: #DC2626;
+    border: 1px solid #FECACA;
+    border-radius: 8px;
+    padding: 0px 16px;
+    min-height: 36px;
+    font-size: 14px;
+    font-weight: 600;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="danger"]:hover {
-    background: #fdf0f0;
+    background: #FEE2E2;
+    border-color: #DC2626;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="danger"]:pressed {
-    background: #fde8e8;
+    background: #FEE2E2;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="danger"]:disabled {
-    color: #f0a8ab;
-    border-color: #f5c2c4;
-    background: #ffffff;
+    color: #FECACA;
+    border-color: #FEE2E2;
+    background: #FFFFFF;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"] {
-    background: #ffffff;
-    color: #1f2328;
-    border: 1px solid #dcdfe6;
-    border-radius: 6px;
-    padding: 6px 16px;
-    min-width: 120px;
-    min-height: 32px;
-    font-size: 13px;
-    text-align: center;
+    background: #FFFFFF;
+    color: #1F2329;
+    border: 1px solid #E6E8EE;
+    border-radius: 8px;
+    padding: 0px 16px;
+    min-height: 36px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:hover {
-    border-color: #2563EB;
-    color: #2563EB;
+    background: #F3F5F8;
+    border-color: #D7DEE8;
+    color: #1F2329;
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:pressed {
@@ -222,20 +221,20 @@ QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:pressed {
 }
 
 QWidget#groupPageFanLX QPushButton[fanlxKind="nav"]:disabled {
-    color: #a8abb2;
+    color: #8A94A3;
     background: #F6F7F9;
-    border-color: #e4e7ed;
+    border-color: #E6E8EE;
 }
 
 QWidget#groupPageFanLX QPushButton[role="back"] {
     color: #2563EB;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 4px 8px;
     min-width: 0;
     min-height: 0;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     text-align: left;
 }
@@ -251,13 +250,13 @@ QWidget#groupPageFanLX QScrollBar:vertical {
 }
 
 QWidget#groupPageFanLX QScrollBar::handle:vertical {
-    background: #d0d5dd;
+    background: #cfd6df;
     border-radius: 3px;
     min-height: 36px;
 }
 
 QWidget#groupPageFanLX QScrollBar::handle:vertical:hover {
-    background: #b8c0cc;
+    background: #b3bcc8;
 }
 
 QWidget#groupPageFanLX QScrollBar::add-line:vertical,
