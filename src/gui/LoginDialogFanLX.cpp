@@ -52,7 +52,7 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
                                  "QLineEdit,QSpinBox,QComboBox{min-height:36px;border-radius:10px;}"
                                  "QPushButton[role=\"primary\"]{border-radius:10px;min-height:44px;font-size:15px;}"));
 
-    // ---- 顶部：Ciallo 图标 + 标题（不再用「樊」字与个人姓名作品牌）----
+    // ---- 顶部：Ciallo 图标 + 标题 ----
     auto *logo = new QLabel(this);
     logo->setObjectName(QStringLiteral("loginLogoFanLX"));
     logo->setFixedSize(72, 72);

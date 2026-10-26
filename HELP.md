@@ -1,9 +1,11 @@
-# 使用说明（FanLX 模拟即时通讯系统）
+# 使用说明（Ciallo 即时通讯系统）
 
 C++17 面向对象课程设计 · 2026-2027 学年第一学期 · 552502 班
 
 本文件是**唯一的操作手册**：从构建、运行、演示到排错，照着做即可。
 想了解项目背景与模块清单看 [README.md](README.md)；各阶段的验收证据看 [docs/](docs)。
+
+交作业只交源码树：`include/`、`src/`、`tests/`、`docs/`、`CMakeLists.txt`、`README.md`、`HELP.md` 以及 `third_party/`。不要打包 `build/`、`data-im-*`、本机 `.claude/` / `.zed/`。构建产物用下面的 CMake 命令在评阅机上现编。
 
 ---
 
@@ -14,7 +16,7 @@ C++17 面向对象课程设计 · 2026-2027 学年第一学期 · 552502 班
 | 控制台数字菜单（课程必做） | `fanlx_app.exe` | 否 | 账号 / 好友 / 群 / 缓存 / 聊天 |
 | 可视化客户端（课后扩展） | `fanlx_gui.exe` | 是 | Qt 6 图形界面，可多开三端联调 |
 | 界面截图证据 | `deliverables/gui-screenshots/*.png` | — | 由 `gui_screenshot` 从真实链路生成 |
-| 工程报告 | `deliverables/樊陆旭_面向对象课设工程文档.docx` | — | 按课程文档要求撰写 |
+| 工程报告 | `deliverables/面向对象课设工程文档.docx` | — | 按课程文档要求撰写 |
 
 ---
 
@@ -823,18 +825,19 @@ include/             四层架构头文件
   ├ db/                 【扩展】SQLite 聊天记录
   └ gui/                【扩展】Qt 图形客户端
 src/                 main.cpp + persistence / network / db / gui / ui 实现
+resources/           Qt 样式表、应用图标、会话列表图标
 tests/               CTest 测试源与 fixtures
 benchmarks/          固定种子缓存基准
 tools/               gui_screenshot（三客户端截图证据工具）
 docs/                架构、数据格式、依赖与分阶段验收记录
 deliverables/        工程报告（docx）与界面截图证据
-scripts/             verify-release.ps1 / run-im-server.ps1 / deploy-gui.ps1
+scripts/             verify-release.ps1 / run-im-server.ps1 / deploy-gui.ps1 / release/
 third_party/         nlohmann/json.hpp（v3.11.3）与 sqlite/sqlite3.h
 data/                默认数据根目录（运行时生成 state.json / .lock）
 data-im-server/      服务端数据根（im-server/ 为消息库）
 data-im-a/ data-im-b/ 控制台客户端数据根（每个控制台实例一个）
 data-im-gui/         GUI 客户端数据根（单根多账号；客户端存储目录按账号派生）
-build/               构建输出（被 .gitignore 忽略，可随时删除重建）
+build/               构建输出（被 .gitignore 忽略，可随时删除重建，不要打进作业包）
 ```
 
 代码入口：

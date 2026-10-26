@@ -173,7 +173,7 @@ int wmain(int argc, wchar_t **argv) {
             app.updateRemark(owner, admin, "新的中文备注", "课程");
             app.addFriend(owner, third);
             app.removeFriend(owner, third);
-            app.updateProfile(owner, "樊陆旭", "长春");
+            app.updateProfile(owner, "同学1", "长春");
             app.bind(owner, {ServiceTypeFanLX::Wechat, "wx_2026001"});
             app.bind(owner, {ServiceTypeFanLX::Wechat, "wx_2026001"}, true);
             app.bind(owner, {ServiceTypeFanLX::Wechat, "wx_2026001"});

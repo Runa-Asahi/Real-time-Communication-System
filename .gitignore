@@ -17,6 +17,8 @@ compile_commands.json
 # ---- 编辑器 / 语言服务器缓存 ----
 /.cache/
 /.vscode/
+/.claude/
+/.zed/
 *.log.clangd
 
 # ---- 运行时数据目录（由 --init-demo 或程序首次启动生成）----

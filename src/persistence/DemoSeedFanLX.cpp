@@ -23,7 +23,7 @@ PlatformSnapshotFanLX demoSeedFanLX() {
         const auto id = "U" + std::to_string(n);
         const auto number = "202600" + std::to_string(n);
         // 注册只创建微X账号（上层身份）：QQ / 微信 / 微博 是随后"在微X里面开通"的下级服务。
-        state.accounts.registerWeiXAccount({id, n == 1 ? "樊陆旭" : "同学" + std::to_string(n), "2005-01-01",
+        state.accounts.registerWeiXAccount({id, "同学" + std::to_string(n), "2005-01-01",
                                             "2026-09-01", "吉林", demoPasswordFanLX(number)},
                                            number);
         // QQ 与微博沿用微X号（课程约定：两者共享同一个号码），微信使用独立号并绑定到 QQ。
@@ -55,12 +55,12 @@ PlatformSnapshotFanLX demoSeedFanLX() {
     auto &qqFriends = state.friends.directory(ServiceTypeFanLX::QQ);
     qqFriends.add(left, right);
     qqFriends.update(left, right, "课程搭档", "同学");
-    qqFriends.update(right, left, "樊同学", "好友");
+    qqFriends.update(right, left, "同学", "好友");
     auto weiboLeft = resolver.accountKey(ServiceTypeFanLX::Weibo, "2026001");
     auto weiboRight = resolver.accountKey(ServiceTypeFanLX::Weibo, "2026002");
     auto &weiboFriends = state.friends.directory(ServiceTypeFanLX::Weibo);
     weiboFriends.add(weiboLeft, weiboRight);
     weiboFriends.update(weiboLeft, weiboRight, "微博好友", "同学");
-    weiboFriends.update(weiboRight, weiboLeft, "樊同学", "好友");
+    weiboFriends.update(weiboRight, weiboLeft, "同学", "好友");
     return SnapshotCodecFanLX::capture(state);
 }

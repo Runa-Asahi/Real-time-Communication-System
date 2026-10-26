@@ -332,7 +332,7 @@ int main(int argc, char **argv) {
     if (domains[0]) {
         // 先在界面上真的做一次领域写操作，证明"界面按钮 → 领域事务 → 写回文件"是通的。
         const auto before = domains[0]->profileText();
-        check(domains[0]->updateProfile(QStringLiteral("樊陆旭"), QStringLiteral("吉林")),
+        check(domains[0]->updateProfile(QStringLiteral("同学1"), QStringLiteral("吉林")),
               "界面操作：修改资料成功");
         check(domains[0]->profileText() != before || true, "资料视图已刷新");
         // 群特色动态切换：QQ 群 1001 在成员数据不受伤害的前提下变成微信管理特色，再切回来。

@@ -2,7 +2,7 @@
 <RCC version="1.0">
   <qresource prefix="/">
     <file>app.qss</file>
-    <!-- 会话列表图标。运行时从资源读，不依赖工作目录。 -->
+    <!-- 会话列表图标。源文件在 resources/icons，运行时从资源读。 -->
     <file alias="conversation/111.png">icons/111.png</file>
     <file alias="conversation/222.png">icons/222.png</file>
     <!-- Ciallo 应用图标（登录页、窗口图标） -->

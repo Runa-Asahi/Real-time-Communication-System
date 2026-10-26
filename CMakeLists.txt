@@ -54,7 +54,7 @@ add_custom_command(OUTPUT "${FANLX_SQLITE_IMPLIB}"
 add_custom_target(fanlx_sqlite_importlib DEPENDS "${FANLX_SQLITE_IMPLIB}")
 # 把导入库作为一个 IMPORTED 目标链接：路径与依赖都由生成规则保证，不使用 -l 搜索。
 add_library(fanlx_sqlite INTERFACE)
-target_include_directories(fanlx_sqlite INTERFACE third_party/nlohmann/sqlite)
+target_include_directories(fanlx_sqlite INTERFACE third_party/sqlite)
 target_link_libraries(fanlx_sqlite INTERFACE "${FANLX_SQLITE_IMPLIB}")
 add_dependencies(fanlx_sqlite fanlx_sqlite_importlib)
 

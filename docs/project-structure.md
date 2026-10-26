@@ -1,4 +1,4 @@
-# 项目结构（樊陆旭模拟即时通信系统）
+# 项目结构（Ciallo 即时通讯系统）
 
 本文说明仓库的目录结构、各模块职责、构建方式与交付物位置。
 实时状态与验收证据见 [progress.md](progress.md)；计划见 [extension-plan.md](extension-plan.md)。
@@ -8,9 +8,10 @@
 ## 1 目录总览
 
 ```
-OOP/
+Ciallo/
 ├─ CMakeLists.txt            单一构建入口（基础版默认构建，GUI 由开关启用）
 ├─ README.md  HELP.md        项目说明 / 使用帮助
+├─ data-README.md            运行期 data-* 目录哪些能删
 ├─ 2026-面向对象程序课程设计.doc   原始任务书（未修改）
 │
 ├─ include/                  头文件（按四层架构分目录，include 路径以此为根）
@@ -39,15 +40,16 @@ OOP/
 │   ├─ gui_domain_tests.cpp  【扩展】领域页签用例（离屏，t70–t82）
 │   └─ cache/console/group/integration/persistence/query_cache_tests.cpp   原有域与集成回归
 │
-├─ tools/         ( 1)       【扩展】gui_screenshot：三客户端真实收发 + 窗口离屏截图为 PNG
-├─ benchmarks/    ( 2)       cache_benchmark（固定种子）；pool_benchmark（对象池与 new/delete 对照）
-├─ scripts/       ( 4)       deploy-gui.ps1（Qt 运行依赖部署）、run-im-server.ps1/.bat（服务端启动；启动前自动重建旧格式数据目录）、verify-release.ps1
+├─ resources/                Qt 资源：样式表、应用图标、会话列表图标（icons/）
+├─ tools/                    【扩展】gui_screenshot：三客户端真实收发 + 窗口离屏截图为 PNG
+├─ benchmarks/               cache_benchmark（固定种子）；pool_benchmark（对象池与 new/delete 对照）
+├─ scripts/                  启动、部署、发布包（含 release/Ciallo.bat）
 ├─ third_party/
 │   ├─ nlohmann/json.hpp     JSON 库（v3.11.3，MIT，随源码离线提供）
 │   └─ sqlite/sqlite3.h      【扩展】官方 SQLite 头文件（3.51.1，公共领域）
-├─ docs/          (11)       架构、数据格式、依赖、各阶段验收记录、扩展计划与进度
+├─ docs/                     架构、数据格式、依赖、各阶段验收记录、扩展计划与进度
 ├─ deliverables/             工程报告（.docx）与界面截图证据（gui-screenshots/*.png）
-└─ data*/ , build/           运行期数据目录与构建输出（均被 .gitignore 忽略）
+└─ data*/ , build/           运行期数据目录与构建输出（均被 .gitignore 忽略，不要打进作业包）
 
 > 运行期数据目录布局：数据根统一为 `data`（默认）/ `data-im-server`（服务端）/ `data-im-a`、`data-im-b`
 > （控制台实例）/ `data-im-gui`（GUI，单根多账号）。客户端存储目录由「服务器身份 + 登录账号 + 服务」派生：

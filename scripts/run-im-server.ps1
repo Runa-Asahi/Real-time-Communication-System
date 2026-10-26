@@ -1,5 +1,5 @@
 ﻿<#
-    run-im-server.ps1 -- 启动「樊陆旭模拟即时通讯系统」的中心转发服务端（前台运行，Ctrl+C 停止）
+    run-im-server.ps1 -- 启动 Ciallo 即时通讯系统的中心转发服务端（前台运行，Ctrl+C 停止）
 
     为什么启动逻辑放在 .ps1 而不是 .bat（重要，别改回去）：
       cmd.exe 解析批处理文件时用的是「控制台当前代码页」，而且它记录读取位置的方式会在
@@ -88,7 +88,7 @@ try {
     $exePath = Join-Path $root $exeRel
 
     Write-Host $separator
-    Write-Host ' 樊陆旭模拟即时通讯系统 - 中心转发服务端'
+    Write-Host ' Ciallo 即时通讯系统 - 中心转发服务端'
     Write-Host $separator
     Write-Host ''
 
