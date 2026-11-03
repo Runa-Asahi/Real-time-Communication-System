@@ -1,6 +1,7 @@
 #pragma once
 #include "db/ChatRepositoryFanLX.h"
 #include "network/ImClientFanLX.h"
+#include <QHash>
 #include <QObject>
 #include <QPair>
 #include <QString>
@@ -14,7 +15,8 @@ namespace fanlxGui {
 // 会话列表项：由数据库会话摘要转换而来，只含界面需要的字段。
 struct ConversationItemFanLX {
     QString key;
-    QString title;       // 对端账号或群号
+    QString title;       // 对端账号或群号（子群为 "<群号>#<子群号>"）
+    QString displayName; // 服务端给出的显示名（群名 / 子群名 / 好友昵称）；为空时界面显示 title
     QString subtitle;    // 最后一条消息正文（截断）
     QString timeText;    // 最后一条消息时间（未知时为空，界面显示"原始时间未知"）
     qint64 unread = 0;
@@ -145,6 +147,8 @@ class ChatControllerFanLX : public QObject {
     void searchLoadedFanLX();
     // 好友申请相关的服务端推送（收到申请 / 被同意 / 被拒绝 / 被删除）。
     void friendNoticeFanLX(const QString &detail);
+    // 群动态（服务端推送）：新建 / 改名 / 审批 / 邀请 / 踢人 / 子群…，groupId 为相关群号。
+    void groupNoticeFanLX(const QString &groupId, const QString &detail);
 
   private slots:
     void drainEventsFanLX();
@@ -190,6 +194,8 @@ class ChatControllerFanLX : public QObject {
     chatDbFanLX::HistoryQueryFanLX searchQueryFanLX;
     chatDbFanLX::HistoryPageFanLX searchPageFanLX;
     QList<QString> authorizedFriendsFanLX, authorizedGroupsFanLX;
+    QHash<QString, QString> displayNamesFanLX;
+    bool directoryLoadedFanLX = false; // 是否已收到过授权目录（据此标记"已退出"的旧群会话） // 授权目录里的显示名：群号 / 子群 / 好友号码 → 名称
     // 临时会话（对端, 本人方向剩余条数）：服务端目录给出，好友不在其中。
     QList<QPair<QString, int>> temporaryPeersFanLX;
     // 本地主动打开、尚未产生消息的临时会话对端（让会话出现在列表里）。

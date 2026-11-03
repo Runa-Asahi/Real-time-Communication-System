@@ -18,7 +18,10 @@ QVariant ConversationListModelFanLX::data(const QModelIndex &index, int role) co
     case Qt::DisplayRole:
     case TitleRoleFanLX:
         // 标题统一带类型前缀，任意视图（列表、下拉框、状态栏）都不会丢掉"群 / 好友"的标志。
-        return QStringLiteral("[") + item.kindText + QStringLiteral("] ") + item.title;
+        return QStringLiteral("[") + item.kindText + QStringLiteral("] ") +
+               (item.displayName.isEmpty() || item.displayName == item.title
+                    ? item.title
+                    : item.displayName + QStringLiteral("（") + item.title + QStringLiteral("）"));
     case KeyRoleFanLX: return item.key;
     case UnreadRoleFanLX: return item.unread;
     case GroupRoleFanLX: return item.group;

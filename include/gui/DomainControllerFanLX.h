@@ -9,6 +9,8 @@
 #include <QString>
 #include <QStringList>
 #include <functional>
+#include <map>
+#include <nlohmann/json.hpp>
 #include <memory>
 
 namespace fanlxGui {
@@ -189,6 +191,19 @@ class DomainControllerFanLX : public QObject {
     QString policyText(const QString &service, const QString &groupId) const;
     // 查询缓存统计：证明"查询结果有缓存、写操作会使旧结果失效"。
     QString cacheSummary() const;
+    // ---- 群：服务端是唯一权威副本 ----
+    // 从服务端拉取当前服务的群摘要（以及 groupId 非空时该群的成员 / 待处理 / 子群），
+    // 之后 groupRows / memberRows / pendingRows / discussionRows / policyText 读的就是服务端这份。
+    // 服务端不可达时返回 false，读视图退回本机库（单机演示）。
+    bool syncGroupsFromServer(const QString &service, const QString &groupId = QString());
+    // 是否正在使用服务端群数据（界面据此提示"单机演示模式"）。
+    bool usingServerGroups(const QString &service) const;
+    // 本人在该群的角色（"群主" / "管理员" / "成员"；不是成员返回空串）。界面据此隐藏无权限的按钮。
+    QString myGroupRole(const QString &service, const QString &groupId) const;
+    // 该账号是否已是群成员（邀请前在界面上就拦下"邀请群主 / 已在群里的人"）。
+    bool isGroupMember(const QString &service, const QString &groupId, const QString &accountId) const;
+    // 服务端推来群动态时调用：刷新缓存并通知各页面重画。
+    void onGroupNoticeFanLX(const QString &groupId);
     QString lastMessage() const { return lastMessageFanLX; }
 
   public slots:
@@ -278,6 +293,12 @@ class DomainControllerFanLX : public QObject {
     void identityChangedFanLX();
 
   private:
+    // 群写操作走服务端：answered=false（连不上）时由调用方决定是否退回本机演示路径。
+    // 返回 true = 服务端已执行；false 且 *answered=true = 服务端明确拒绝（已发失败信号）。
+    bool groupServerOpFanLX(const QString &service, const nlohmann::json &params, const QString &success,
+                            bool *answered);
+    bool groupRequestFanLX(const QString &service, const nlohmann::json &params, nlohmann::json &reply,
+                           QString &reason, bool *answered) const;
     // 经服务端执行一次好友操作并对账本机副本（实现见 network/PeerAccountResolutionFanLX）；
     // 服务端还不认识本人时先登记再重试一次。via 非空 = 依据本人在 via 服务的好友添加。
     peerAccountFanLX::FriendOperationResultFanLX friendOperationFanLX(const AccountRefFanLX &actor,
@@ -336,6 +357,9 @@ class DomainControllerFanLX : public QObject {
     // 本次登录使用的密码：用于"简单确认"联动本人其它平台（一个用户一个密码）。
     QString loginPasswordFanLX;
     quint64 commitCountFanLX = 0;
+    // 服务端群缓存：键 = 存储服务名（QQ / Wechat）；detail 键 = 服务名 + "|" + 群号。
+    std::map<std::string, nlohmann::json> serverGroupListFanLX;
+    std::map<std::string, nlohmann::json> serverGroupDetailFanLX;
 };
 
 } // namespace fanlxGui

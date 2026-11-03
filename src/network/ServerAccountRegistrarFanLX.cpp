@@ -3,6 +3,8 @@
 #include "infra/UtcClockFanLX.h"
 #include "persistence/PersistenceApplicationFanLX.h"
 #include <algorithm>
+#include <nlohmann/json.hpp>
+#include <stdexcept>
 
 bool ServerAccountRegistrarFanLX::refreshAccounts() const { return appFanLX.reloadIfChangedFromDisk(); }
 
@@ -114,6 +116,116 @@ std::string ServerAccountRegistrarFanLX::updateFriendshipFanLX(const std::string
             (void)appFanLX.mirrorFriendship({type, self}, {type, peer});
         else
             (void)appFanLX.unmirrorFriendship({type, self}, {type, peer});
+        return {};
+    } catch (const std::exception &error) {
+        return error.what();
+    }
+}
+
+namespace {
+// 服务端以操作者身份执行：凭据已由 IM 服务端校验，这里在持久化库里建立该账号的登录态。
+void ensureLoggedInFanLX(PersistenceApplicationFanLX &app, const AccountRefFanLX &actor,
+                         const std::string &password) {
+    if (!app.state().accounts.isAccountLoggedIn(actor.service, actor.accountId))
+        app.login(actor, password, false);
+}
+} // namespace
+
+std::string ServerAccountRegistrarFanLX::groupOperationFanLX(const std::string &service,
+                                                             const std::string &self,
+                                                             const std::string &password,
+                                                             const std::string &params) const {
+    try {
+        ServiceTypeFanLX type{};
+        if (!serviceFromNameFanLX(service, type) || !groupCapableFanLX(type))
+            return "群功能只支持 QQ 与微信";
+        const auto body = nlohmann::json::parse(params);
+        const auto op = body.value("op", std::string());
+        const auto groupId = body.value("group", std::string());
+        const auto target = body.value("target", std::string());
+        const auto name = body.value("name", std::string());
+        const auto discussion = body.value("discussion", std::string());
+        const AccountRefFanLX actor{type, self};
+        ensureLoggedInFanLX(appFanLX, actor, password);
+        const GroupKeyFanLX key{type == ServiceTypeFanLX::Wechat ? GroupModeFanLX::Wechat : GroupModeFanLX::QQ,
+                                groupId};
+        const AccountRefFanLX other{type, target};
+        const auto needTarget = [&] {
+            if (target.empty())
+                throw std::runtime_error("请填写目标账号");
+        };
+        if (op == "create") {
+            appFanLX.createGroup(actor, key);
+            if (!name.empty())
+                appFanLX.renameGroup(actor, key, name);
+        } else if (op == "rename") {
+            if (name.empty()) throw std::runtime_error("新群名不能为空");
+            if (name.size() > 60) throw std::runtime_error("群名太长（最多 20 个汉字）");
+            appFanLX.renameGroup(actor, key, name);
+        } else if (op == "apply") {
+            appFanLX.applyToJoin(actor, key);
+        } else if (op == "approve" || op == "reject") {
+            needTarget();
+            appFanLX.approveApplication(actor, key, other, op == "reject");
+        } else if (op == "invite") {
+            needTarget();
+            if (target == self) throw std::runtime_error("不能邀请自己");
+            if (!appFanLX.state().groups.hasGroup(key))
+                throw std::runtime_error("群 " + groupId + " 不存在（可能已解散）");
+            if (appFanLX.state().groups.get(key).currentMode() == GroupModeFanLX::QQ)
+                appFanLX.inviteToApply(actor, key, other);
+            else
+                appFanLX.inviteMember(actor, key, other);
+        } else if (op == "confirm" || op == "decline") {
+            appFanLX.confirmInvitation(actor, key, op == "decline");
+        } else if (op == "leave") {
+            appFanLX.leave(actor, key);
+        } else if (op == "kick") {
+            needTarget();
+            appFanLX.kick(actor, key, other);
+        } else if (op == "admin" || op == "unadmin") {
+            needTarget();
+            appFanLX.assignAdmin(actor, key, other, op == "unadmin");
+        } else if (op == "transfer") {
+            needTarget();
+            if (target == self) throw std::runtime_error("你已经是群主");
+            appFanLX.transferOwnership(actor, key, other);
+        } else if (op == "dissolve") {
+            appFanLX.dissolve(actor, key);
+        } else if (op == "mode") {
+            appFanLX.switchPolicy(actor, key, body.value("mode", std::string()) == "QQ" ? GroupModeFanLX::QQ
+                                                                                        : GroupModeFanLX::Wechat);
+        } else if (op == "disc_create") {
+            appFanLX.createDiscussion(actor, key, discussion);
+        } else if (op == "disc_join") {
+            needTarget();
+            appFanLX.joinDiscussion(actor, key, discussion, other);
+        } else {
+            return "未知的群操作：" + op;
+        }
+        return {};
+    } catch (const std::out_of_range &) {
+        return "群或成员不存在";
+    } catch (const std::exception &error) {
+        return error.what();
+    }
+}
+
+std::string ServerAccountRegistrarFanLX::updateProfileFanLX(const std::string &weixId, const std::string &password,
+                                                            const std::string &nickname,
+                                                            const std::string &location,
+                                                            const std::string &newPassword) const {
+    try {
+        const auto &accounts = appFanLX.state().accounts;
+        if (weixId.empty() || !accounts.hasAccount(ServiceTypeFanLX::WeiX, weixId) ||
+            !accounts.verifyPassword(ServiceTypeFanLX::WeiX, weixId, password))
+            return "用户名或密码错误（资料同步需要本人微X凭据）";
+        const AccountRefFanLX actor{ServiceTypeFanLX::WeiX, weixId};
+        ensureLoggedInFanLX(appFanLX, actor, password);
+        if (!nickname.empty() || !location.empty())
+            appFanLX.updateProfile(actor, nickname, location);
+        if (!newPassword.empty())
+            appFanLX.changePassword(actor, password, newPassword);
         return {};
     } catch (const std::exception &error) {
         return error.what();

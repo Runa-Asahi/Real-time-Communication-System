@@ -10,6 +10,7 @@
 #include "persistence/NamedFilePublisherFanLX.h"
 #include "persistence/PersistenceErrorFanLX.h"
 #include "persistence/PlatformStateFanLX.h"
+#include "persistence/SnapshotCodecFanLX.h"
 #include "network/FriendRequestBookFanLX.h"
 #include "network/P2pProtocolFanLX.h"
 #include "network/TemporaryChatQuotaFanLX.h"
@@ -57,6 +58,12 @@ std::string loadOrCreateInstanceIdFanLX(const std::filesystem::path &directory,
 // 受限于单帧文本上限：过大时明确报错（分块传输留待后续版本），不静默截断。
 std::string buildDirectoryJsonFanLX(const nlohmann::json &payload) {
     auto text = payload.dump();
+    if (text.size() > 4000 && payload.contains("names")) {
+        // 显示名只是锦上添花：放不下时先丢掉它，保证好友与群本身仍能下发。
+        auto slim = payload;
+        slim.erase("names");
+        text = slim.dump();
+    }
     if (text.size() > 4000)
         throw std::runtime_error("授权目录过大，暂不支持单帧传输");
     return text;
@@ -239,14 +246,41 @@ struct ImServerFanLX::Impl {
         out = service == ServiceTypeFanLX::Wechat ? GroupModeFanLX::Wechat : GroupModeFanLX::QQ;
         return true;
     }
-    bool member(const Session &s, const std::string &u, const std::string &group) const {
+    // 群聊目标可以是父群 "<群号>" 或子群 "<群号>#<子群号>"：子群只对子群成员可见。
+    // 返回该目标当前的成员 userId；目标不存在（或子群已归档）返回 false。
+    bool groupMembersFanLX(ServiceTypeFanLX service, const std::string &target,
+                           std::vector<std::string> &out) const {
         GroupModeFanLX mode{};
-        if (!modeOfFanLX(s.service, mode))
-            return false; // 微博没有群：任何"群成员"判定都为假
-        try {
-            return subscribed(s, u) && state.groups.get({mode, group}).hasMember(
-                state.accounts.accountByAccountId(s.service, u).userId);
-        } catch (const std::out_of_range &) { return false; }
+        if (!modeOfFanLX(service, mode))
+            return false;
+        const auto hash = target.find('#');
+        const GroupKeyFanLX key{mode, hash == std::string::npos ? target : target.substr(0, hash)};
+        if (!state.groups.hasGroup(key))
+            return false;
+        if (hash == std::string::npos) {
+            out = state.groups.get(key).members();
+            return true;
+        }
+        const auto discId = target.substr(hash + 1);
+        if (!state.groups.hasDiscussion(key, discId))
+            return false;
+        const auto &discussion = state.groups.getDiscussion(key, discId);
+        if (discussion.archived())
+            return false;
+        const auto &parent = state.groups.get(key);
+        for (const auto &uid : discussion.members())
+            if (parent.hasMember(uid)) // 离开父群的人同时失去子群可见性
+                out.push_back(uid);
+        return true;
+    }
+    bool member(const Session &s, const std::string &u, const std::string &group) const {
+        if (!subscribed(s, u))
+            return false;
+        std::vector<std::string> members;
+        if (!groupMembersFanLX(s.service, group, members))
+            return false;
+        const auto uid = state.accounts.accountByAccountId(s.service, u).userId;
+        return std::find(members.begin(), members.end(), uid) != members.end();
     }
     // 在线判定按 (服务, 账号)：不同服务里同名号码互不相干。
     bool online(ServiceTypeFanLX service, const std::string &u) const {
@@ -288,15 +322,13 @@ struct ImServerFanLX::Impl {
     // 微博（没有群）恒返回空集合，由调用方报"该服务没有群"。
     std::set<std::string> groupRecipients(const Session &s, const std::string &group) const {
         std::set<std::string> recipients;
-        GroupModeFanLX mode{};
-        if (!modeOfFanLX(s.service, mode))
-            return recipients;
-        try {
-            for (const auto &uid : state.groups.get({mode, group}).members()) {
-                const auto *account = state.accounts.findAccount(uid, s.service);
-                if (account && subscribed(s, account->accountId)) recipients.insert(account->accountId);
-            }
-        } catch (const std::out_of_range &) { /* 群不存在：返回空集合，由调用方报错 */ }
+        std::vector<std::string> members;
+        if (!groupMembersFanLX(s.service, group, members))
+            return recipients; // 群不存在 / 微博：返回空集合，由调用方报错
+        for (const auto &uid : members) {
+            const auto *account = state.accounts.findAccount(uid, s.service);
+            if (account && subscribed(s, account->accountId)) recipients.insert(account->accountId);
+        }
         return recipients;
     }
     // 授权目录：本服务的好友 + （有群的服务）本命名空间下已加入的群。
@@ -306,6 +338,7 @@ struct ImServerFanLX::Impl {
         for (const auto &id : friendIdsOf(s.service, s.user))
             friendsList.push_back(id);
         nlohmann::json groupsList = nlohmann::json::array();
+        nlohmann::json namesList = nlohmann::json::object();
         GroupModeFanLX mode{};
         if (subscribed(s, s.user) && modeOfFanLX(s.service, mode)) {
             const auto userId = state.accounts.accountByAccountId(s.service, s.user).userId;
@@ -313,19 +346,40 @@ struct ImServerFanLX::Impl {
                 if (groupKey.mode != mode)
                     continue; // 只列本服务命名空间的群
                 try {
-                    if (state.groups.get(groupKey).hasMember(userId))
-                        groupsList.push_back(groupKey.id);
+                    const auto &group = state.groups.get(groupKey);
+                    if (!group.hasMember(userId))
+                        continue;
+                    groupsList.push_back(groupKey.id);
+                    const auto title = group.name().empty() ? "群 " + groupKey.id : group.name();
+                    namesList[groupKey.id] = title;
+                    // 子群（讨论组）作为独立会话出现在聊天首页，只列本人所在、未归档的子群。
+                    for (const auto &discussion : state.groups.discussionsOf(groupKey)) {
+                        if (discussion->archived() || !discussion->hasMember(userId))
+                            continue;
+                        const auto id = groupKey.id + "#" + discussion->id();
+                        groupsList.push_back(id);
+                        namesList[id] = title + " › 子群 " + discussion->id();
+                    }
                 } catch (const std::exception &) { /* 单个群异常不影响整体目录 */ }
             }
         }
         std::sort(groupsList.begin(), groupsList.end());
         groupsList.erase(std::unique(groupsList.begin(), groupsList.end()), groupsList.end());
+        // 好友昵称（服务端这份资料是权威的：对方改昵称后这里随之变化）。
+        for (const auto &id : friendIdsOf(s.service, s.user)) {
+            try {
+                const auto &nick = state.accounts.profile(state.accounts.accountByAccountId(s.service, id).userId).nickname;
+                if (!nick.empty())
+                    namesList[id] = nick;
+            } catch (const std::exception &) {}
+        }
         auto reply = socketIoFanLX::control("DIRECTORY_LIST");
         reply.text = buildDirectoryJsonFanLX(
             {{"schema", "fanlx-directory-1"},
              {"service", serviceNameFanLX(s.service)},
              {"friends", friendsList},
              {"groups", groupsList},
+             {"names", namesList},
              // 非好友临时会话：服务端授权的对端 + 我方向对方还能发几条。
              {"temporary", temporaryListFanLX(s.service, s.user, false)}});
         write(s, reply);
@@ -611,6 +665,270 @@ struct ImServerFanLX::Impl {
         write(s, answer);
     }
 
+    // ---- 群（服务端是唯一权威副本）----
+    static const char *roleNameFanLX(GroupRoleFanLX role) {
+        switch (role) {
+        case GroupRoleFanLX::Owner: return "群主";
+        case GroupRoleFanLX::Admin: return "管理员";
+        default: return "成员";
+        }
+    }
+    std::string accountOfUserFanLX(ServiceTypeFanLX service, const std::string &uid) const {
+        const auto *account = state.accounts.findAccount(uid, service);
+        return account ? account->accountId : uid;
+    }
+    // 与某群相关的全部用户：成员、子群成员、申请人 / 被邀请人 / 邀请人。操作前后各取一次求并集，
+    // 这样被踢的人、刚被批准的人、其他管理员都会收到推送。
+    std::set<std::string> groupAudienceFanLX(const GroupKeyFanLX &key) const {
+        std::set<std::string> out;
+        if (!state.groups.hasGroup(key))
+            return out;
+        for (const auto &uid : state.groups.get(key).members())
+            out.insert(uid);
+        for (const auto &record : SnapshotCodecFanLX::capture(state).groups) {
+            if (!(record.key == key))
+                continue;
+            for (const auto &a : record.applications) out.insert(a.applicant);
+            for (const auto &i : record.invitations) {
+                out.insert(i.invitee);
+                out.insert(i.inviter);
+            }
+        }
+        return out;
+    }
+    void notifyGroupFanLX(ServiceTypeFanLX service, const std::set<std::string> &users, const std::string &group,
+                          const std::string &text) {
+        for (auto &other : sessions) {
+            if (other->user.empty() || other->service != service || other->peer->ended())
+                continue;
+            std::string uid;
+            try {
+                uid = state.accounts.accountByAccountId(service, other->user).userId;
+            } catch (const std::exception &) { continue; }
+            if (!users.count(uid))
+                continue;
+            auto notice = socketIoFanLX::control("GROUP_NOTICE");
+            notice.recipient = group;
+            notice.text = text;
+            write(*other, notice);
+            refreshOneDirectoryFanLX(*other); // 新群 / 子群 / 改名 立即出现在聊天首页
+        }
+    }
+    // 把 JSON 压到单帧以内：先丢已结束的历史记录，再截断成员列表。
+    static std::string fitFrameFanLX(nlohmann::json reply) {
+        auto text = reply.dump();
+        if (text.size() <= 4000) return text;
+        if (reply.contains("pending")) {
+            nlohmann::json kept = nlohmann::json::array();
+            for (const auto &row : reply.at("pending"))
+                if (row.value("pending", false)) kept.push_back(row);
+            reply["pending"] = kept;
+            reply["truncated"] = true;
+            text = reply.dump();
+        }
+        while (text.size() > 4000 && reply.contains("members") && reply.at("members").size() > 1) {
+            reply["members"].erase(reply["members"].size() - 1);
+            reply["truncated"] = true;
+            text = reply.dump();
+        }
+        while (text.size() > 4000 && reply.contains("groups") && !reply.at("groups").empty()) {
+            reply["groups"].erase(reply["groups"].size() - 1);
+            reply["truncated"] = true;
+            text = reply.dump();
+        }
+        if (text.size() > 4000) throw std::runtime_error("群数据过大，单帧放不下");
+        return text;
+    }
+    // list：本人在该服务的群摘要 + 待本人处理的邀请；detail：单个群的成员 / 待处理 / 子群。
+    nlohmann::json groupSummaryFanLX(ServiceTypeFanLX service, const std::string &self) const {
+        nlohmann::json groups = nlohmann::json::array();
+        nlohmann::json mine = nlohmann::json::array();
+        GroupModeFanLX mode{};
+        if (!modeOfFanLX(service, mode))
+            return {{"groups", groups}, {"mine", mine}};
+        const auto uid = state.accounts.accountByAccountId(service, self).userId;
+        for (const auto &key : groupKeysFanLX(state)) {
+            if (key.mode != mode) continue;
+            const auto &group = state.groups.get(key);
+            if (group.hasMember(uid)) {
+                groups.push_back({{"id", key.id}, {"name", group.name()},
+                                  {"mode", group.currentMode() == GroupModeFanLX::QQ ? "QQ" : "Wechat"},
+                                  {"role", roleNameFanLX(group.roleOf(uid))},
+                                  {"count", group.members().size()}});
+                continue;
+            }
+            const auto *a = state.groups.findApplication(key, uid);
+            const auto *i = state.groups.findInvitation(key, uid);
+            if (a && a->pending)
+                mine.push_back({{"group", key.id}, {"name", group.name()}, {"kind", "application"}});
+            if (i && i->pending)
+                mine.push_back({{"group", key.id}, {"name", group.name()}, {"kind", "invitation"},
+                                {"inviter", accountOfUserFanLX(service, i->inviter)}});
+        }
+        return {{"groups", groups}, {"mine", mine}};
+    }
+    nlohmann::json groupDetailFanLX(ServiceTypeFanLX service, const std::string &self, const GroupKeyFanLX &key) const {
+        if (!state.groups.hasGroup(key))
+            throw std::runtime_error("群 " + key.id + " 不存在（可能已解散）");
+        const auto uid = state.accounts.accountByAccountId(service, self).userId;
+        const auto &group = state.groups.get(key);
+        const bool isMember = group.hasMember(uid);
+        const auto *a = state.groups.findApplication(key, uid);
+        const auto *i = state.groups.findInvitation(key, uid);
+        if (!isMember && !(a && a->pending) && !(i && i->pending))
+            throw std::runtime_error("你不是群 " + key.id + " 的成员");
+        nlohmann::json detail{{"id", key.id}, {"name", group.name()},
+                              {"mode", group.currentMode() == GroupModeFanLX::QQ ? "QQ" : "Wechat"},
+                              {"member", isMember},
+                              {"role", isMember ? roleNameFanLX(group.roleOf(uid)) : ""}};
+        nlohmann::json members = nlohmann::json::array();
+        nlohmann::json pending = nlohmann::json::array();
+        nlohmann::json discussions = nlohmann::json::array();
+        for (const auto &record : SnapshotCodecFanLX::capture(state).groups) {
+            if (!(record.key == key)) continue;
+            std::vector<std::pair<std::string, GroupMembershipFanLX>> rows(record.state.members.begin(),
+                                                                          record.state.members.end());
+            std::sort(rows.begin(), rows.end(), [](const auto &l, const auto &r) {
+                if (l.second.role != r.second.role) return l.second.role < r.second.role;
+                return l.second.joinOrder < r.second.joinOrder;
+            });
+            if (isMember)
+                for (const auto &row : rows)
+                    members.push_back({{"account", accountOfUserFanLX(service, row.first)},
+                                       {"role", roleNameFanLX(row.second.role)},
+                                       {"order", row.second.joinOrder},
+                                       {"joinedAt", row.second.joinedAtUtc.value_or("")}});
+            // 待处理记录：成员看全部（含"已通过"，多位管理员看到的是同一份状态）；非成员只看自己的。
+            for (const auto &app : record.applications)
+                if (isMember || app.applicant == uid)
+                    pending.push_back({{"kind", "application"}, {"account", accountOfUserFanLX(service, app.applicant)},
+                                       {"status", app.status}, {"pending", app.pending}});
+            for (const auto &inv : record.invitations)
+                if (isMember || inv.invitee == uid)
+                    pending.push_back({{"kind", "invitation"}, {"account", accountOfUserFanLX(service, inv.invitee)},
+                                       {"inviter", accountOfUserFanLX(service, inv.inviter)},
+                                       {"status", inv.status}, {"pending", inv.pending}});
+            if (isMember)
+                for (const auto &disc : record.discussions) {
+                    nlohmann::json dm = nlohmann::json::array();
+                    for (const auto &m : disc.members) dm.push_back(accountOfUserFanLX(service, m));
+                    discussions.push_back({{"id", disc.id}, {"members", dm}, {"archived", disc.archived}});
+                }
+        }
+        // 待审批的排在前面，界面一眼就能看到要处理的。
+        std::stable_sort(pending.begin(), pending.end(), [](const auto &l, const auto &r) {
+            return l.value("pending", false) && !r.value("pending", false);
+        });
+        detail["members"] = members;
+        detail["pending"] = pending;
+        detail["discussions"] = discussions;
+        return detail;
+    }
+    void handleGroupFanLX(Session &s, const ChatMessageFanLX &m) {
+        nlohmann::json body;
+        try {
+            body = nlohmann::json::parse(m.text);
+        } catch (const std::exception &) {
+            throw std::runtime_error("群请求需要本人凭据");
+        }
+        if (!body.is_object())
+            throw std::runtime_error("群请求格式错误");
+        const auto service = parseChannelServiceFanLX(m.service);
+        const auto self = body.value("self", std::string());
+        const auto password = body.value("password", std::string());
+        const auto op = body.value("op", std::string());
+        const auto groupId = body.value("group", std::string());
+        if (options.refreshAccounts)
+            options.refreshAccounts();
+        if (self.empty() || !state.accounts.verifyPassword(service, self, password))
+            throw std::runtime_error("用户名或密码错误（群操作需要本人当前服务的凭据）");
+        if (!subscribedIn(service, self))
+            throw std::runtime_error("本人尚未开通" + serviceDisplayNameFanLX(service));
+        GroupModeFanLX mode{};
+        if (!modeOfFanLX(service, mode))
+            throw std::runtime_error(serviceDisplayNameFanLX(service) + "没有群功能");
+        nlohmann::json reply{{"ok", true}, {"op", op}, {"service", serviceNameFanLX(service)}};
+        const GroupKeyFanLX key{mode, groupId};
+        if (op == "list") {
+            auto summary = groupSummaryFanLX(service, self);
+            reply["groups"] = summary["groups"];
+            reply["mine"] = summary["mine"];
+        } else if (op == "detail") {
+            reply["group"] = groupDetailFanLX(service, self, key);
+            // detail 的成员 / 待处理放顶层，便于 fitFrame 截断。
+            reply["members"] = reply["group"]["members"];
+            reply["pending"] = reply["group"]["pending"];
+            reply["group"].erase("members");
+            reply["group"].erase("pending");
+        } else {
+            if (!options.groupOperation)
+                throw std::runtime_error("本服务端未启用群操作落地（请用 --im-server 启动）");
+            if (groupId.empty())
+                throw std::runtime_error("请填写群号");
+            const auto before = groupAudienceFanLX(key);
+            const auto failure = options.groupOperation(serviceNameFanLX(service), self, password, m.text);
+            if (!failure.empty())
+                throw std::runtime_error(failure);
+            if (options.refreshAccounts)
+                options.refreshAccounts();
+            auto audience = before;
+            for (const auto &uid : groupAudienceFanLX(key)) audience.insert(uid);
+            const auto target = body.value("target", std::string());
+            if (!target.empty() && state.accounts.hasAccount(service, target))
+                audience.insert(state.accounts.accountByAccountId(service, target).userId);
+            audience.insert(state.accounts.accountByAccountId(service, self).userId);
+            const auto text = body.value("summary", std::string());
+            notifyGroupFanLX(service, audience, groupId,
+                             text.empty() ? self + " 更新了群 " + groupId : text);
+            reply["message"] = "ok";
+        }
+        auto answer = socketIoFanLX::control("GROUP_RESULT");
+        answer.sender = self;
+        answer.text = fitFrameFanLX(reply);
+        write(s, answer);
+    }
+
+    // ---- 资料（昵称 / 所在地）：服务端权威，改完推给好友刷新显示名 ----
+    void handleProfileFanLX(Session &s, const ChatMessageFanLX &m) {
+        nlohmann::json body;
+        try {
+            body = nlohmann::json::parse(m.text);
+        } catch (const std::exception &) {
+            throw std::runtime_error("资料请求需要本人凭据");
+        }
+        const auto weix = m.sender;
+        const auto password = body.value("password", std::string());
+        if (!options.updateProfile)
+            throw std::runtime_error("本服务端未启用资料同步");
+        const auto failure = options.updateProfile(weix, password, body.value("nickname", std::string()),
+                                                   body.value("location", std::string()),
+                                                   body.value("newPassword", std::string()));
+        if (!failure.empty())
+            throw std::runtime_error(failure);
+        if (options.refreshAccounts)
+            options.refreshAccounts();
+        // 本人各服务的好友，以及同群成员：刷新他们的目录（显示名随之更新）。
+        std::string uid;
+        try {
+            uid = state.accounts.accountByAccountId(ServiceTypeFanLX::WeiX, weix).userId;
+        } catch (const std::exception &) {}
+        for (auto &other : sessions) {
+            if (other->user.empty() || other->peer->ended()) continue;
+            const auto *mine = state.accounts.findAccount(uid, other->service);
+            if (!mine) continue;
+            if (other->user == mine->accountId || friendsIn(other->service, other->user, mine->accountId)) {
+                auto notice = socketIoFanLX::control("GROUP_NOTICE");
+                notice.text = "资料已更新";
+                write(*other, notice);
+                refreshOneDirectoryFanLX(*other);
+            }
+        }
+        auto answer = socketIoFanLX::control("PROFILE_OK");
+        answer.sender = weix;
+        answer.text = "资料已同步到服务端";
+        write(s, answer);
+    }
+
     void handle(Session &s, ChatMessageFanLX m) {
         // 账号登记：账号层的"自举"消息，未认证也能发。服务端把它写进**持久化账号库**
         // （OptionsFanLX::registerAccount），因此注册之后不需要重启服务端。
@@ -700,6 +1018,16 @@ struct ImServerFanLX::Impl {
         }
         // 好友申请（服务端中转）：发起 / 同意 / 拒绝 / 撤回 / 删除 / 列表。
         // 与 LOOKUP 同样是一次性凭据请求，不与聊天通道的单设备策略冲突。
+        if (m.type == "GROUP") {
+            if (!s.user.empty()) throw std::runtime_error("群操作请使用独立的短连接");
+            handleGroupFanLX(s, m);
+            return;
+        }
+        if (m.type == "PROFILE") {
+            if (!s.user.empty()) throw std::runtime_error("资料同步请使用独立的短连接");
+            handleProfileFanLX(s, m);
+            return;
+        }
         if (m.type == "FRIEND") {
             if (!s.user.empty()) throw std::runtime_error("好友操作请使用独立的短连接");
             handleFriendFanLX(s, m);

@@ -34,6 +34,15 @@ QString roleTextFanLX(GroupRoleFanLX role) {
 // 领域异常文本是 UTF-8（源码与 GCC 输入字符集一致），统一走 fromUtf8，
 // 与控制台把异常按 UTF-8 输出的口径保持一致。
 QString fromUtf8FanLX(const std::string &text) { return QString::fromUtf8(text.c_str()); }
+std::string storageOfFanLX(const QString &service) {
+    ServiceTypeFanLX parsed{};
+    if (!serviceFromNameFanLX(service.toStdString(), parsed))
+        return service.toStdString();
+    return serviceNameFanLX(parsed);
+}
+QString statusOfFanLX(const nlohmann::json &row) {
+    return QString::fromStdString(row.value("status", std::string()));
+}
 
 // T龄：号码申请日期到今天的整年数。与 ConsoleAppFanLX 用同一口径（按 "月-日" 比较决定是否减一年），
 // 否则同一个账号在控制台与 GUI 会显示不同的 T龄。
@@ -722,6 +731,32 @@ QStringList DomainControllerFanLX::groupRows(const QString &service) const {
     QStringList rows;
     if (!appFanLX || userIdFanLX.isEmpty())
         return rows;
+    {
+        auto it = serverGroupListFanLX.find(storageOfFanLX(service));
+        if (it != serverGroupListFanLX.end()) {
+            for (const auto &g : it->second.value("groups", nlohmann::json::array())) {
+                const auto name = g.value("name", std::string());
+                rows << QStringLiteral("%1 ｜ %2 ｜ 模式 %3 ｜ 成员 %4 人 ｜ 我是%5")
+                            .arg(QString::fromStdString(g.value("id", std::string())),
+                                 name.empty() ? QStringLiteral("（未命名）") : fromUtf8FanLX(name),
+                                 g.value("mode", std::string()) == "QQ" ? QStringLiteral("QQ") : QStringLiteral("微信"))
+                            .arg(g.value("count", 0))
+                            .arg(fromUtf8FanLX(g.value("role", std::string())));
+            }
+            // 待本人处理的邀请 / 本人已提交的申请：也列出来，否则被邀请人找不到入口。
+            for (const auto &m : it->second.value("mine", nlohmann::json::array())) {
+                const bool invitation = m.value("kind", std::string()) == "invitation";
+                rows << QStringLiteral("%1 ｜ %2 ｜ %3")
+                            .arg(QString::fromStdString(m.value("group", std::string())),
+                                 m.value("name", std::string()).empty() ? QStringLiteral("（未命名）")
+                                                                        : fromUtf8FanLX(m.value("name", std::string())),
+                                 invitation ? QStringLiteral("待我确认：%1 邀请我入群")
+                                                  .arg(QString::fromStdString(m.value("inviter", std::string())))
+                                            : QStringLiteral("我的入群申请待审批"));
+            }
+            return rows;
+        }
+    }
     ServiceTypeFanLX parsed{};
     if (!serviceOfFanLX(service, parsed) || !groupCapableFanLX(parsed))
         return rows;
@@ -748,6 +783,16 @@ QStringList DomainControllerFanLX::memberRows(const QString &service, const QStr
     GroupKeyFanLX key{};
     if (!appFanLX || !groupKeyFanLX(service, groupId, key, nullptr))
         return rows;
+    if (usingServerGroups(service)) {
+        auto it = serverGroupDetailFanLX.find(storageOfFanLX(service) + "|" + groupId.trimmed().toStdString());
+        if (it != serverGroupDetailFanLX.end())
+            for (const auto &m : it->second.value("members", nlohmann::json::array()))
+                rows << QStringLiteral("%1 ｜ %2 ｜ 加入序号 %3")
+                            .arg(QString::fromStdString(m.value("account", std::string())),
+                                 fromUtf8FanLX(m.value("role", std::string())))
+                            .arg(m.value("order", 0));
+        return rows;
+    }
     const auto &manager = appFanLX->state().accounts;
     const auto platform = platformOfModeFanLX(key.mode);
     try {
@@ -772,6 +817,23 @@ QStringList DomainControllerFanLX::pendingRows(const QString &service, const QSt
     GroupKeyFanLX key{};
     if (!appFanLX || !groupKeyFanLX(service, groupId, key, nullptr))
         return rows;
+    if (usingServerGroups(service)) {
+        auto it = serverGroupDetailFanLX.find(storageOfFanLX(service) + "|" + groupId.trimmed().toStdString());
+        if (it != serverGroupDetailFanLX.end())
+            for (const auto &r : it->second.value("pending", nlohmann::json::array())) {
+                const bool pending = r.value("pending", false);
+                if (r.value("kind", std::string()) == "application")
+                    rows << QStringLiteral("入群申请：%1 ｜ 状态 %2%3")
+                                .arg(QString::fromStdString(r.value("account", std::string())), statusOfFanLX(r),
+                                     pending ? QStringLiteral("  ← 待审批") : QString());
+                else
+                    rows << QStringLiteral("入群推荐：%1 邀请 %2 ｜ 状态 %3%4")
+                                .arg(QString::fromStdString(r.value("inviter", std::string())),
+                                     QString::fromStdString(r.value("account", std::string())), statusOfFanLX(r),
+                                     pending ? QStringLiteral("  ← 待确认") : QString());
+            }
+        return rows;
+    }
     const auto &manager = appFanLX->state().accounts;
     const auto platform = platformOfModeFanLX(key.mode);
     const auto accountText = [&manager, platform](const std::string &user) {
@@ -800,6 +862,21 @@ QStringList DomainControllerFanLX::discussionRows(const QString &service, const 
     GroupKeyFanLX key{};
     if (!appFanLX || !groupKeyFanLX(service, groupId, key, nullptr))
         return rows;
+    if (usingServerGroups(service)) {
+        auto it = serverGroupDetailFanLX.find(storageOfFanLX(service) + "|" + groupId.trimmed().toStdString());
+        if (it != serverGroupDetailFanLX.end())
+            for (const auto &d : it->second.value("group", nlohmann::json::object()).value("discussions", nlohmann::json::array())) {
+                QStringList members;
+                for (const auto &m : d.value("members", nlohmann::json::array()))
+                    members << QString::fromStdString(m.get<std::string>());
+                rows << QStringLiteral("子群 %1 ｜ 成员 %2 人：%3 ｜ 已归档：%4")
+                            .arg(fromUtf8FanLX(d.value("id", std::string())))
+                            .arg(members.size())
+                            .arg(members.isEmpty() ? QStringLiteral("（无）") : members.join(QStringLiteral("、")))
+                            .arg(d.value("archived", false) ? QStringLiteral("是") : QStringLiteral("否"));
+            }
+        return rows;
+    }
     const auto &manager = appFanLX->state().accounts;
     const auto platform = platformOfModeFanLX(key.mode);
     const auto snapshot = appFanLX->snapshot();
@@ -827,6 +904,39 @@ QString DomainControllerFanLX::policyText(const QString &service, const QString 
     if (!appFanLX || !groupKeyFanLX(service, groupId, key, nullptr))
         return QStringLiteral("请选择左侧的一个群：这里显示该群**当前**的管理特色，"
                               "并可动态切换为另一类群的管理模式。");
+    if (usingServerGroups(service)) {
+        auto it = serverGroupDetailFanLX.find(storageOfFanLX(service) + "|" + groupId.trimmed().toStdString());
+        if (it == serverGroupDetailFanLX.end())
+            return QStringLiteral("群 %1 在服务端不存在，或你还不是成员。请在列表中选择已有的群，或先创建。")
+                .arg(groupId.trimmed());
+        const auto &g = it->second.value("group", nlohmann::json::object());
+        const bool qq = g.value("mode", std::string()) == "QQ";
+        const bool switched = qq != (key.mode == GroupModeFanLX::QQ);
+        const auto name = g.value("name", std::string());
+        QString text;
+        text += QStringLiteral("群号 %1 ｜ 群名 %2 ｜ 我的身份 %3\n")
+                    .arg(groupId.trimmed(), name.empty() ? QStringLiteral("（未命名）") : fromUtf8FanLX(name),
+                         g.value("member", false) ? fromUtf8FanLX(g.value("role", std::string()))
+                                                  : QStringLiteral("非成员（待处理）"));
+        text += QStringLiteral("【群身份】登记在 %1 命名空间；【当前管理特色】%2（策略对象 %3）%4\n")
+                    .arg(key.mode == GroupModeFanLX::QQ ? QStringLiteral("QQ") : QStringLiteral("微信"),
+                         qq ? QStringLiteral("QQ 群") : QStringLiteral("微信群"),
+                         qq ? QStringLiteral("QQGroupPolicyFanLX") : QStringLiteral("WechatGroupPolicyFanLX"),
+                         switched ? QStringLiteral("  ← 已动态切换（群身份与成员数据不变）") : QString());
+        text += QStringLiteral("【加入方式】%1\n")
+                    .arg(qq ? QStringLiteral("申请-审批制：非成员可主动申请入群，群主或管理员批准后生效")
+                            : QStringLiteral("推荐制：只能由群内成员推荐（邀请），被推荐人确认后入群；没有申请入口"));
+        text += QStringLiteral("【特权账号】%1\n")
+                    .arg(qq ? QStringLiteral("群主 + 管理员制度：群主可任免管理员，管理员与群主共同管理成员")
+                            : QStringLiteral("仅群主为特权账号：不支持设置管理员，成员管理只由群主执行"));
+        text += QStringLiteral("【子群/讨论组】%1\n")
+                    .arg(qq ? QStringLiteral("允许：群主或管理员可开设子群并从中拉人，子群在聊天首页有独立入口")
+                            : QStringLiteral("不允许：微信没有讨论组概念，创建请求会被策略直接拒绝"));
+        text += QStringLiteral("【成员数据】%1 名成员、%2 个子群（数据来自服务端，所有成员看到的是同一份）")
+                    .arg(memberRows(service, groupId).size())
+                    .arg(discussionRows(service, groupId).size());
+        return text;
+    }
     // 群号可能在当前命名空间里不存在（手填、已解散、或刚从另一个服务切过来），
     // 直接 get() 会抛出 unordered_map::at，这里先判断并给出人能看懂的提示。
     {
@@ -1107,8 +1217,23 @@ bool DomainControllerFanLX::updateProfile(const QString &nickname, const QString
                           : (location.trimmed().isEmpty()
                                  ? QStringLiteral("昵称 %1（所在地未改动）").arg(nickname)
                                  : QStringLiteral("昵称 %1、所在地 %2").arg(nickname, location));
-    return runFanLX(QStringLiteral("资料已保存：") + what, [&] {
-        appFanLX->updateProfile(actor, nickname.toStdString(), location.toStdString());
+    // 资料以服务端为准：好友与群成员看到的是服务端这份。先写服务端，再写本机副本。
+    QString synced;
+    if (!hostFanLX.isEmpty() && portFanLX != 0 && !weixAccountId().isEmpty()) {
+        std::string why;
+        bool heard = false;
+        if (ImClientFanLX::syncProfileFanLX(hostFanLX.toStdString(), portFanLX, weixAccountId().toStdString(),
+                                            loginPasswordFanLX.toStdString(), nickname.trimmed().toStdString(),
+                                            location.trimmed().toStdString(), {}, why, &heard, 3000))
+            synced = QStringLiteral("（已同步到服务端，好友处立即更新）");
+        else if (heard) {
+            emitResultFanLX(false, QStringLiteral("服务端拒绝了资料修改：") + fromUtf8FanLX(why));
+            return false;
+        } else
+            synced = QStringLiteral("（服务端不可达，仅保存在本机）");
+    }
+    return runFanLX(QStringLiteral("资料已保存：") + what + synced, [&] {
+        appFanLX->updateProfile(actor, nickname.trimmed().toStdString(), location.trimmed().toStdString());
     });
 }
 
@@ -1122,6 +1247,18 @@ bool DomainControllerFanLX::changePassword(const QString &oldPassword, const QSt
     if (!actorFanLX(actor, &reason)) {
         emitResultFanLX(false, reason);
         return false;
+    }
+    // 聊天认证查的是服务端账号库：只改本机会导致下次登录 / 聊天连接被拒。先改服务端（校验旧密码）。
+    if (!hostFanLX.isEmpty() && portFanLX != 0 && !weixAccountId().isEmpty()) {
+        std::string why;
+        bool heard = false;
+        if (!ImClientFanLX::syncProfileFanLX(hostFanLX.toStdString(), portFanLX, weixAccountId().toStdString(),
+                                             oldPassword.toStdString(), {}, {}, newPassword.toStdString(), why,
+                                             &heard, 3000) &&
+            heard) {
+            emitResultFanLX(false, QStringLiteral("服务端拒绝改密：") + fromUtf8FanLX(why));
+            return false;
+        }
     }
     const auto ok = runFanLX(
         QStringLiteral("密码已修改：本人各平台共用这一份密码，下次登录请用新密码"),
@@ -1567,6 +1704,13 @@ bool DomainControllerFanLX::createGroup(const QString &service, const QString &g
     }
     // 创建者自动成为群主（领域层 createGroup 会给首个成员 Owner 角色），
     // 因此新建出来的群一定有主，不存在"无主群"。
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "create"}, {"group", groupId.trimmed().toStdString()}}, QStringLiteral("已创建群 %1，本人为群主；群已出现在聊天首页").arg(groupId), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(QStringLiteral("已创建群 %1（%2 模式策略），本人为群主").arg(groupId, service),
                     [&] { appFanLX->createGroup(actor, key); });
 }
@@ -1587,6 +1731,13 @@ bool DomainControllerFanLX::renameGroup(const QString &service, const QString &g
         emitResultFanLX(false, reason);
         return false;
     }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "rename"}, {"group", groupId.toStdString()}, {"name", name.trimmed().toStdString()}, {"summary", (QStringLiteral("群 %1 已更名为 %2").arg(groupId, name.trimmed())).toStdString()}}, QStringLiteral("群 %1 已更名为 %2（已同步给全体成员）").arg(groupId, name.trimmed()), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(QStringLiteral("群 %1 已更名为 %2").arg(groupId, name),
                     [&] { appFanLX->renameGroup(actor, key, name.toStdString()); });
 }
@@ -1598,6 +1749,13 @@ bool DomainControllerFanLX::applyToJoinGroup(const QString &service, const QStri
     if (!groupContextFanLX(service, groupId, key, actor, &reason)) {
         emitResultFanLX(false, reason);
         return false;
+    }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "apply"}, {"group", groupId.toStdString()}, {"summary", (currentAccountId() + QStringLiteral(" 申请加入群 ") + groupId).toStdString()}}, QStringLiteral("已提交入群申请：等待群主或管理员批准"), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
     }
     return runFanLX(QStringLiteral("已提交入群申请：等待群主或管理员批准（QQ 群特有流程）"),
                     [&] { appFanLX->applyToJoin(actor, key); });
@@ -1613,6 +1771,13 @@ bool DomainControllerFanLX::approveGroupApplication(const QString &service, cons
         return false;
     }
     const auto target = accountId.trimmed().isEmpty() ? currentAccountId() : accountId;
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", reject ? "reject" : "approve"}, {"group", groupId.toStdString()}, {"target", target.trimmed().toStdString()}, {"summary", (currentAccountId() + (reject ? QStringLiteral(" 拒绝了 ") : QStringLiteral(" 批准了 ")) + target + QStringLiteral(" 的入群申请")).toStdString()}}, (reject ? QStringLiteral("已拒绝 %1 的入群申请").arg(target) : QStringLiteral("已批准 %1 入群").arg(target)), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(reject ? QStringLiteral("已拒绝 %1 的入群申请").arg(target)
                            : QStringLiteral("已批准 %1 入群").arg(target),
                     [&] {
@@ -1635,10 +1800,32 @@ bool DomainControllerFanLX::inviteGroupMember(const QString &service, const QStr
         return false;
     }
     const AccountRefFanLX invitee{actor.service, accountId.trimmed().toStdString()};
+    if (isGroupMember(service, groupId, accountId.trimmed())) {
+        emitResultFanLX(false, QStringLiteral("%1 已经是该群成员（含群主），不能再邀请").arg(accountId.trimmed()));
+        return false;
+    }
     // 两种群的"邀请"落到各自的流程里：
     //   QQ 群   ：替对方提交入群申请，由群主/管理员审批（申请-审批制）；
     //   微信群 ：向对方发出推荐，对方本人确认后入群（推荐-确认制）。
     // 注意看的是群当前的管理特色（策略），而不是群所在的命名空间：群可以动态切换特色。
+    if (accountId.trimmed() == currentAccountId()) {
+        emitResultFanLX(false, QStringLiteral("不能邀请自己"));
+        return false;
+    }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service,
+                               nlohmann::json{{"op", "invite"}, {"group", groupId.toStdString()},
+                                              {"target", accountId.trimmed().toStdString()},
+                                              {"summary", (currentAccountId() + QStringLiteral(" 邀请 ") +
+                                                           accountId.trimmed() + QStringLiteral(" 加入群 ") + groupId)
+                                                              .toStdString()}},
+                               QStringLiteral("已邀请 %1：QQ 群需群主或管理员审批，微信群需对方本人确认").arg(accountId.trimmed()),
+                               &answered))
+            return true;
+        if (answered)
+            return false;
+    }
     bool qqStyle = key.mode == GroupModeFanLX::QQ;
     try {
         qqStyle = appFanLX->state().groups.get(key).currentMode() == GroupModeFanLX::QQ;
@@ -1662,6 +1849,13 @@ bool DomainControllerFanLX::confirmGroupInvitation(const QString &service, const
     }
     // 被推荐人本人确认：领域接口以 actor 自身为被邀请人，因此这里不接受第三方账号。
     (void)accountId;
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", reject ? "decline" : "confirm"}, {"group", groupId.toStdString()}, {"summary", (currentAccountId() + (reject ? QStringLiteral(" 拒绝了入群邀请") : QStringLiteral(" 已入群"))).toStdString()}}, (reject ? QStringLiteral("已拒绝入群邀请") : QStringLiteral("已确认入群：群已出现在聊天首页")), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(reject ? QStringLiteral("已拒绝入群推荐：推荐记录标记为 Rejected")
                            : QStringLiteral("已确认入群推荐：本人进入该群"),
                     [&] { appFanLX->confirmInvitation(actor, key, reject); });
@@ -1674,6 +1868,13 @@ bool DomainControllerFanLX::leaveGroup(const QString &service, const QString &gr
     if (!groupContextFanLX(service, groupId, key, actor, &reason)) {
         emitResultFanLX(false, reason);
         return false;
+    }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "leave"}, {"group", groupId.toStdString()}, {"summary", (currentAccountId() + QStringLiteral(" 退出了群 ") + groupId).toStdString()}}, QStringLiteral("已退出群 %1").arg(groupId), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
     }
     return runFanLX(QStringLiteral("已退出群 %1").arg(groupId), [&] { appFanLX->leave(actor, key); });
 }
@@ -1690,6 +1891,13 @@ bool DomainControllerFanLX::kickGroupMember(const QString &service, const QStrin
     if (accountId.trimmed().isEmpty()) {
         emitResultFanLX(false, QStringLiteral("请填写要移出的成员账号"));
         return false;
+    }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "kick"}, {"group", groupId.toStdString()}, {"target", accountId.trimmed().toStdString()}, {"summary", (accountId.trimmed() + QStringLiteral(" 被移出群 ") + groupId).toStdString()}}, QStringLiteral("已将 %1 移出群 %2").arg(accountId, groupId), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
     }
     return runFanLX(QStringLiteral("已将 %1 移出群 %2（挨 T）").arg(accountId, groupId), [&] {
         appFanLX->kick(actor, key, {actor.service, accountId.toStdString()});
@@ -1708,6 +1916,13 @@ bool DomainControllerFanLX::assignGroupAdmin(const QString &service, const QStri
     if (accountId.trimmed().isEmpty()) {
         emitResultFanLX(false, QStringLiteral("请填写目标成员账号"));
         return false;
+    }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", revoke ? "unadmin" : "admin"}, {"group", groupId.toStdString()}, {"target", accountId.trimmed().toStdString()}}, (revoke ? QStringLiteral("已撤销 %1 的管理员权限").arg(accountId) : QStringLiteral("已任命 %1 为管理员").arg(accountId)), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
     }
     return runFanLX(revoke ? QStringLiteral("已撤销 %1 的管理员权限").arg(accountId)
                            : QStringLiteral("已任命 %1 为管理员（QQ 群管理员制度）").arg(accountId),
@@ -1729,6 +1944,13 @@ bool DomainControllerFanLX::transferGroupOwner(const QString &service, const QSt
         emitResultFanLX(false, QStringLiteral("请填写新群主账号"));
         return false;
     }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "transfer"}, {"group", groupId.toStdString()}, {"target", accountId.trimmed().toStdString()}}, QStringLiteral("已把群主转让给 %1：原群主降为普通成员").arg(accountId), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(QStringLiteral("已把群主转让给 %1：原群主降为普通成员").arg(accountId), [&] {
         appFanLX->transferOwnership(actor, key, {actor.service, accountId.toStdString()});
     });
@@ -1741,6 +1963,13 @@ bool DomainControllerFanLX::dissolveGroup(const QString &service, const QString 
     if (!groupContextFanLX(service, groupId, key, actor, &reason)) {
         emitResultFanLX(false, reason);
         return false;
+    }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "dissolve"}, {"group", groupId.toStdString()}, {"summary", (QStringLiteral("群 ") + groupId + QStringLiteral(" 已被解散")).toStdString()}}, QStringLiteral("已解散群 %1").arg(groupId), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
     }
     return runFanLX(QStringLiteral("已解散群 %1：群记录作为历史片段归档，成员数据不丢失").arg(groupId),
                     [&] { appFanLX->dissolve(actor, key); });
@@ -1757,6 +1986,13 @@ bool DomainControllerFanLX::switchGroupMode(const QString &service, const QStrin
     // service 是群**登记所在**的命名空间（QQ 群用 QQ 身份，微信群用微信身份）；
     // 切换只替换策略对象，群键、成员、加入序号与子群记录都原地保留。
     // 因此"再切回来"仍要用原来那个命名空间，而不是切换后的目标模式。
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "mode"}, {"group", groupId.toStdString()}, {"mode", toQqMode ? "QQ" : "Wechat"}}, QStringLiteral("群 %1 的管理特色已切换为 %2").arg(groupId, toQqMode ? QStringLiteral("QQ 群") : QStringLiteral("微信群")), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(QStringLiteral("群 %1 的管理特色已切换为 %2：加入方式、特权账号与子群能力立即"
                                    "按新策略生效，群身份与成员数据原地保留")
                         .arg(groupId, toQqMode ? QStringLiteral("QQ 群") : QStringLiteral("微信群")),
@@ -1779,6 +2015,13 @@ bool DomainControllerFanLX::createDiscussionGroup(const QString &service, const 
         emitResultFanLX(false, QStringLiteral("请填写讨论组（子群）编号"));
         return false;
     }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "disc_create"}, {"group", groupId.toStdString()}, {"discussion", discussionId.trimmed().toStdString()}}, QStringLiteral("已在群 %1 下创建子群 %2：子群已出现在聊天首页").arg(groupId, discussionId.trimmed()), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(QStringLiteral("已在群 %1 下创建讨论组 %2").arg(groupId, discussionId),
                     [&] { appFanLX->createDiscussion(actor, key, discussionId.toStdString()); });
 }
@@ -1796,10 +2039,150 @@ bool DomainControllerFanLX::joinDiscussionGroup(const QString &service, const QS
         emitResultFanLX(false, QStringLiteral("讨论组编号与成员账号都不能为空"));
         return false;
     }
+    {
+        bool answered = false;
+        if (groupServerOpFanLX(service, nlohmann::json{{"op", "disc_join"}, {"group", groupId.toStdString()}, {"discussion", discussionId.trimmed().toStdString()}, {"target", accountId.trimmed().toStdString()}}, QStringLiteral("已把 %1 加入子群 %2").arg(accountId, discussionId), &answered))
+            return true;
+        if (answered)
+            return false; // 服务端明确拒绝：不再退回本机，避免两份群数据分叉
+    }
     return runFanLX(QStringLiteral("已把 %1 加入子群 %2").arg(accountId, discussionId), [&] {
         appFanLX->joinDiscussion(actor, key, discussionId.toStdString(),
                                  {actor.service, accountId.toStdString()});
     });
+}
+
+// ============================ 群：服务端权威 ============================
+
+
+bool DomainControllerFanLX::groupRequestFanLX(const QString &service, const nlohmann::json &params,
+                                              nlohmann::json &reply, QString &reason, bool *answered) const {
+    if (answered)
+        *answered = false;
+    if (!appFanLX || hostFanLX.isEmpty() || portFanLX == 0) {
+        reason = QStringLiteral("没有服务端地址");
+        return false;
+    }
+    ServiceTypeFanLX parsed{};
+    if (!serviceOfFanLX(service, parsed) || !groupCapableFanLX(parsed)) {
+        reason = QStringLiteral("群功能只支持 QQ 与微信");
+        return false;
+    }
+    const auto self = accountIdOf(serviceTextFanLX(parsed));
+    if (self.isEmpty()) {
+        reason = QStringLiteral("本人还没有开通 %1").arg(serviceTextFanLX(parsed));
+        return false;
+    }
+    std::string text, why;
+    bool heard = false;
+    const bool ok = ImClientFanLX::groupOperationFanLX(hostFanLX.toStdString(), portFanLX, serviceNameFanLX(parsed),
+                                                       self.toStdString(), loginPasswordFanLX.toStdString(),
+                                                       params.dump(), text, why, &heard, 3000);
+    if (answered)
+        *answered = heard;
+    if (!ok) {
+        reason = fromUtf8FanLX(why);
+        return false;
+    }
+    try {
+        reply = nlohmann::json::parse(text);
+    } catch (const std::exception &) {
+        reason = QStringLiteral("服务端群应答格式错误");
+        return false;
+    }
+    return true;
+}
+
+bool DomainControllerFanLX::groupServerOpFanLX(const QString &service, const nlohmann::json &params,
+                                               const QString &success, bool *answered) {
+    nlohmann::json reply;
+    QString reason;
+    bool heard = false;
+    const bool ok = groupRequestFanLX(service, params, reply, reason, &heard);
+    if (answered)
+        *answered = heard;
+    if (!ok) {
+        if (heard)
+            emitResultFanLX(false, reason);
+        return false;
+    }
+    // 写成功后立即重拉：本机界面看到的就是服务端那一份（与其他成员一致）。
+    const auto op = params.value("op", std::string());
+    const auto group = QString::fromStdString(params.value("group", std::string()));
+    syncGroupsFromServer(service, op == "dissolve" || op == "leave" ? QString() : group);
+    if (op == "dissolve" || op == "leave" || op == "kick")
+        serverGroupDetailFanLX.erase(storageOfFanLX(service) + "|" + group.toStdString());
+    ++commitCountFanLX;
+    emit dataChangedFanLX();
+    emitResultFanLX(true, success);
+    return true;
+}
+
+bool DomainControllerFanLX::syncGroupsFromServer(const QString &service, const QString &groupId) {
+    const auto storage = storageOfFanLX(service);
+    nlohmann::json reply;
+    QString reason;
+    bool heard = false;
+    if (!groupRequestFanLX(service, nlohmann::json{{"op", "list"}, {"group", ""}}, reply, reason, &heard)) {
+        if (!heard) {
+            // 连不上：退回本机库（单机演示）。已经拿到过的服务端数据也作废，避免显示过期状态。
+            serverGroupListFanLX.erase(storage);
+            for (auto it = serverGroupDetailFanLX.begin(); it != serverGroupDetailFanLX.end();)
+                it = it->first.rfind(storage + "|", 0) == 0 ? serverGroupDetailFanLX.erase(it) : std::next(it);
+        }
+        return false;
+    }
+    serverGroupListFanLX[storage] = reply;
+    if (groupId.trimmed().isEmpty())
+        return true;
+    const auto key = storage + "|" + groupId.trimmed().toStdString();
+    nlohmann::json detail;
+    if (groupRequestFanLX(service, nlohmann::json{{"op", "detail"}, {"group", groupId.trimmed().toStdString()}},
+                          detail, reason, &heard))
+        serverGroupDetailFanLX[key] = detail;
+    else
+        serverGroupDetailFanLX.erase(key); // 已解散 / 已不是成员
+    return true;
+}
+
+bool DomainControllerFanLX::usingServerGroups(const QString &service) const {
+    return serverGroupListFanLX.count(storageOfFanLX(service)) != 0;
+}
+
+QString DomainControllerFanLX::myGroupRole(const QString &service, const QString &groupId) const {
+    const auto storage = storageOfFanLX(service);
+    auto it = serverGroupListFanLX.find(storage);
+    if (it != serverGroupListFanLX.end()) {
+        for (const auto &g : it->second.value("groups", nlohmann::json::array()))
+            if (QString::fromStdString(g.value("id", std::string())) == groupId.trimmed())
+                return QString::fromStdString(g.value("role", std::string()));
+        return QString();
+    }
+    for (const auto &row : memberRows(service, groupId)) {
+        const auto parts = row.split(QStringLiteral(" ｜ "));
+        if (parts.size() > 1 && parts.at(0) == currentAccountId())
+            return parts.at(1);
+    }
+    return QString();
+}
+
+bool DomainControllerFanLX::isGroupMember(const QString &service, const QString &groupId,
+                                          const QString &accountId) const {
+    if (accountId.trimmed().isEmpty())
+        return false;
+    for (const auto &row : memberRows(service, groupId))
+        if (row.section(QStringLiteral(" ｜ "), 0, 0) == accountId.trimmed())
+            return true;
+    return false;
+}
+
+void DomainControllerFanLX::onGroupNoticeFanLX(const QString &groupId) {
+    Q_UNUSED(groupId);
+    if (!opened())
+        return;
+    // 刷新缓存后让各页面重读；页面自己会带上当前选中的群号再拉一次详情。
+    syncGroupsFromServer(currentServiceFanLX);
+    emit dataChangedFanLX();
 }
 
 } // namespace fanlxGui

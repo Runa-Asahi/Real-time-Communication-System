@@ -77,6 +77,59 @@ void PersistenceApplicationFanLX::importInitial(const PlatformSnapshotFanLX &see
         candidate = std::move(imported);
     });
 }
+namespace {
+// 群写操作的前置校验：把"已是成员 / 已有待处理 / 已被处理"变成明确的错误。
+// 领域服务（GroupServiceFanLX）对重复请求保持幂等，应用层负责告诉用户发生了什么。
+const char *statusTextFanLX(const std::string &status) {
+    if (status == "Approved") return "已通过";
+    if (status == "Rejected") return "已拒绝";
+    if (status == "Cancelled") return "已取消";
+    if (status == "Expired") return "已过期";
+    return "待处理";
+}
+void requireGroupFanLX(const GroupServiceFanLX &groups, const GroupKeyFanLX &key) {
+    if (!groups.hasGroup(key))
+        throw std::runtime_error("群 " + key.id + " 不存在（可能已解散）");
+}
+void requireNotMemberFanLX(const GroupServiceFanLX &groups, const GroupKeyFanLX &key, const std::string &user,
+                           const std::string &who) {
+    const auto &group = groups.get(key);
+    if (!group.hasMember(user)) return;
+    if (group.roleOf(user) == GroupRoleFanLX::Owner)
+        throw std::runtime_error(who + "是该群群主，不能邀请或申请");
+    throw std::runtime_error(who + "已经是该群成员");
+}
+void requireNoPendingFanLX(const GroupServiceFanLX &groups, const GroupKeyFanLX &key, const std::string &user,
+                           const std::string &who) {
+    const auto *application = groups.findApplication(key, user);
+    if (application && application->pending)
+        throw std::runtime_error(who + "已有一条待审批的入群申请，请等待群主或管理员处理");
+    const auto *invitation = groups.findInvitation(key, user);
+    if (invitation && invitation->pending)
+        throw std::runtime_error(who + "已有一条待确认的入群邀请，请等待对方确认");
+}
+template <class StateT>
+std::string targetUserFanLX(StateT &s, const AccountRefFanLX &target) {
+    if (target.accountId.empty())
+        throw std::runtime_error("请填写目标账号");
+    if (!s.accounts.hasAccount(target.service, target.accountId))
+        throw std::runtime_error("没有账号 " + target.accountId);
+    return s.accounts.accountByAccountId(target.service, target.accountId).userId;
+}
+void requireMemberTargetFanLX(const GroupServiceFanLX &groups, const GroupKeyFanLX &key, const std::string &user,
+                              const std::string &account) {
+    if (!groups.get(key).hasMember(user))
+        throw std::runtime_error(account + " 不是该群成员");
+}
+// 群号 / 子群号会出现在会话键与路由里：不允许分隔符，也不允许空白。
+void requireIdFanLX(const std::string &id, const char *what) {
+    if (id.empty() || id.size() > 32)
+        throw std::runtime_error(std::string(what) + "不能为空，且不超过 32 个字符");
+    for (const char c : id)
+        if (c == '|' || c == '#' || c == ' ' || c == '\t' || c == '/')
+            throw std::runtime_error(std::string(what) + "不能包含 | # / 或空格");
+}
+} // namespace
 AccountSessionFanLX PersistenceApplicationFanLX::session(PlatformStateFanLX &s,
                                                          const AccountRefFanLX &actor) const {
     // 会话恢复不校验密码：能走到这里的调用方都是在 login 通过之后凭登录态工作的，
@@ -246,12 +299,23 @@ void PersistenceApplicationFanLX::createGroup(AccountRefFanLX actor, GroupKeyFan
     requireReady();
     transactionsFanLX.execute([&](auto &s) {
         auto user = actorUser(s, actor, key);
+        requireIdFanLX(key.id, "群号");
+        if (s.groups.hasGroup(key))
+            throw std::runtime_error("群号 " + key.id + " 已被占用，请换一个");
         s.groups.create(key).addMember(user, GroupRoleFanLX::Owner);
     });
 }
 void PersistenceApplicationFanLX::applyToJoin(AccountRefFanLX actor, GroupKeyFanLX key) {
     requireReady();
-    transactionsFanLX.execute([&](auto &s) { s.groups.applyToJoin(key, actorUser(s, actor, key)); });
+    transactionsFanLX.execute([&](auto &s) {
+        const auto user = actorUser(s, actor, key);
+        requireGroupFanLX(s.groups, key);
+        if (s.groups.get(key).currentMode() != GroupModeFanLX::QQ)
+            throw std::runtime_error("当前群模式不支持该加入方式（微信群只能由群成员邀请）");
+        requireNotMemberFanLX(s.groups, key, user, "你");
+        requireNoPendingFanLX(s.groups, key, user, "你");
+        s.groups.applyToJoin(key, user);
+    });
 }
 void PersistenceApplicationFanLX::approveApplication(AccountRefFanLX actor, GroupKeyFanLX key,
                                                      AccountRefFanLX target, bool reject) {
@@ -260,11 +324,20 @@ void PersistenceApplicationFanLX::approveApplication(AccountRefFanLX actor, Grou
         const auto user = actorUser(s, actor, key);
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
-        const auto peer = s.accounts.accountByAccountId(target.service, target.accountId).userId;
-        if (reject)
-            s.groups.rejectApplication(key, user, peer);
-        else
-            s.groups.approveApplication(key, user, peer);
+        requireGroupFanLX(s.groups, key);
+        if (!s.accounts.hasAccount(target.service, target.accountId))
+            throw std::runtime_error("没有账号 " + target.accountId);
+        const auto peer = targetUserFanLX(s, target);
+        const auto *application = s.groups.findApplication(key, peer);
+        if (!application)
+            throw std::runtime_error(target.accountId + " 没有入群申请");
+        if (!application->pending)
+            throw std::runtime_error(target.accountId + " 的入群申请已被处理（" +
+                                     statusTextFanLX(application->status) + "），无需重复操作");
+        const bool done = reject ? s.groups.rejectApplication(key, user, peer)
+                                 : s.groups.approveApplication(key, user, peer);
+        if (!done)
+            throw std::runtime_error("该申请已被处理，无需重复操作");
     });
 }
 void PersistenceApplicationFanLX::inviteMember(AccountRefFanLX actor, GroupKeyFanLX key,
@@ -274,8 +347,15 @@ void PersistenceApplicationFanLX::inviteMember(AccountRefFanLX actor, GroupKeyFa
         const auto user = actorUser(s, actor, key);
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
-        s.groups.inviteMember(key, user,
-                              s.accounts.accountByAccountId(target.service, target.accountId).userId);
+        requireGroupFanLX(s.groups, key);
+        if (!s.accounts.hasAccount(target.service, target.accountId))
+            throw std::runtime_error("没有账号 " + target.accountId);
+        const auto peer = targetUserFanLX(s, target);
+        if (!s.groups.get(key).hasMember(user))
+            throw std::runtime_error("邀请人必须是群成员");
+        requireNotMemberFanLX(s.groups, key, peer, target.accountId + " ");
+        requireNoPendingFanLX(s.groups, key, peer, target.accountId + " ");
+        s.groups.inviteMember(key, user, peer);
     });
 }
 void PersistenceApplicationFanLX::inviteToApply(AccountRefFanLX actor, GroupKeyFanLX key,
@@ -285,23 +365,40 @@ void PersistenceApplicationFanLX::inviteToApply(AccountRefFanLX actor, GroupKeyF
         const auto user = actorUser(s, actor, key);
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
-        s.groups.inviteToApply(key, user,
-                               s.accounts.accountByAccountId(target.service, target.accountId).userId);
+        requireGroupFanLX(s.groups, key);
+        if (!s.accounts.hasAccount(target.service, target.accountId))
+            throw std::runtime_error("没有账号 " + target.accountId);
+        const auto peer = targetUserFanLX(s, target);
+        if (!s.groups.get(key).hasMember(user))
+            throw std::runtime_error("邀请人必须是群成员");
+        requireNotMemberFanLX(s.groups, key, peer, target.accountId + " ");
+        requireNoPendingFanLX(s.groups, key, peer, target.accountId + " ");
+        s.groups.inviteToApply(key, user, peer);
     });
 }
 void PersistenceApplicationFanLX::confirmInvitation(AccountRefFanLX actor, GroupKeyFanLX key, bool reject) {
     requireReady();
     transactionsFanLX.execute([&](auto &s) {
         const auto user = actorUser(s, actor, key);
-        if (reject)
-            s.groups.rejectInvitation(key, user);
-        else
-            s.groups.confirmInvitation(key, user);
+        requireGroupFanLX(s.groups, key);
+        const auto *invitation = s.groups.findInvitation(key, user);
+        if (!invitation)
+            throw std::runtime_error("你没有该群的入群邀请");
+        if (!invitation->pending)
+            throw std::runtime_error(std::string("该邀请已处理（") + statusTextFanLX(invitation->status) + "）");
+        const bool done = reject ? s.groups.rejectInvitation(key, user) : s.groups.confirmInvitation(key, user);
+        if (!done)
+            throw std::runtime_error("邀请人已不在群内，邀请已失效");
     });
 }
 void PersistenceApplicationFanLX::leave(AccountRefFanLX actor, GroupKeyFanLX key) {
     requireReady();
-    transactionsFanLX.execute([&](auto &s) { s.groups.leave(key, actorUser(s, actor, key)); });
+    transactionsFanLX.execute([&](auto &s) {
+        const auto user = actorUser(s, actor, key);
+        requireGroupFanLX(s.groups, key);
+        if (!s.groups.leave(key, user))
+            throw std::runtime_error("你不是该群成员");
+    });
 }
 void PersistenceApplicationFanLX::kick(AccountRefFanLX actor, GroupKeyFanLX key, AccountRefFanLX target) {
     requireReady();
@@ -309,9 +406,15 @@ void PersistenceApplicationFanLX::kick(AccountRefFanLX actor, GroupKeyFanLX key,
         const auto user = actorUser(s, actor, key);
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
-        if (!s.groups.removeMember(key, user,
-                                   s.accounts.accountByAccountId(target.service, target.accountId).userId))
-            throw std::runtime_error("踢人被权限规则拒绝");
+        requireGroupFanLX(s.groups, key);
+        const auto peer = targetUserFanLX(s, target);
+        requireMemberTargetFanLX(s.groups, key, peer, target.accountId);
+        if (peer == user)
+            throw std::runtime_error("不能移出自己（请用「退出该群」）");
+        if (s.groups.get(key).roleOf(peer) == GroupRoleFanLX::Owner)
+            throw std::runtime_error("不能移出群主");
+        if (!s.groups.removeMember(key, user, peer))
+            throw std::runtime_error("权限不足：只有群主可以移出管理员，管理员只能移出普通成员");
     });
 }
 void PersistenceApplicationFanLX::dissolve(AccountRefFanLX actor, GroupKeyFanLX key) {
@@ -326,7 +429,7 @@ void PersistenceApplicationFanLX::transferOwnership(AccountRefFanLX actor, Group
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
         s.groups.transferOwnership(key, user,
-                                   s.accounts.accountByAccountId(target.service, target.accountId).userId);
+                                   targetUserFanLX(s, target));
     });
 }
 void PersistenceApplicationFanLX::assignAdmin(AccountRefFanLX actor, GroupKeyFanLX key,
@@ -336,7 +439,7 @@ void PersistenceApplicationFanLX::assignAdmin(AccountRefFanLX actor, GroupKeyFan
         const auto user = actorUser(s, actor, key);
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
-        const auto peer = s.accounts.accountByAccountId(target.service, target.accountId).userId;
+        const auto peer = targetUserFanLX(s, target);
         if (revoke)
             s.groups.revokeAdmin(key, user, peer);
         else
@@ -360,6 +463,10 @@ void PersistenceApplicationFanLX::createDiscussion(AccountRefFanLX actor, GroupK
     requireReady();
     transactionsFanLX.execute([&](auto &s) {
         const auto user = actorUser(s, actor, key);
+        requireGroupFanLX(s.groups, key);
+        requireIdFanLX(id, "子群号");
+        if (s.groups.hasDiscussion(key, id))
+            throw std::runtime_error("子群 " + id + " 已存在");
         s.groups.createDiscussion(key, id, user);
         s.groups.joinDiscussion(key, id, user, user);
     });
@@ -371,8 +478,14 @@ void PersistenceApplicationFanLX::joinDiscussion(AccountRefFanLX actor, GroupKey
         const auto user = actorUser(s, actor, key);
         if (target.service != actor.service)
             throw std::runtime_error("目标服务不匹配");
-        if (!s.groups.joinDiscussion(key, id, user,
-                                     s.accounts.accountByAccountId(target.service, target.accountId).userId))
+        requireGroupFanLX(s.groups, key);
+        if (!s.groups.hasDiscussion(key, id))
+            throw std::runtime_error("子群 " + id + " 不存在");
+        const auto peer = targetUserFanLX(s, target);
+        requireMemberTargetFanLX(s.groups, key, peer, target.accountId);
+        if (s.groups.getDiscussion(key, id).hasMember(peer))
+            throw std::runtime_error(target.accountId + " 已经在子群 " + id + " 里");
+        if (!s.groups.joinDiscussion(key, id, user, peer))
             throw std::runtime_error("子群加入失败");
     });
 }
@@ -380,7 +493,8 @@ void PersistenceApplicationFanLX::renameGroup(AccountRefFanLX actor, GroupKeyFan
     requireReady();
     transactionsFanLX.execute([&](auto &s) {
         const auto user = actorUser(s, actor, key);
-        if (s.groups.get(key).roleOf(user) != GroupRoleFanLX::Owner)
+        requireGroupFanLX(s.groups, key);
+        if (!s.groups.get(key).hasMember(user) || s.groups.get(key).roleOf(user) != GroupRoleFanLX::Owner)
             throw std::runtime_error("需要群主权限");
         s.groups.get(key).rename(name);
     });

@@ -195,6 +195,16 @@ int wmain(int argc, wchar_t **argv) {
                                                     const std::string &peer, bool add) {
                 return registrar.updateFriendshipFanLX(service, self, peer, add);
             };
+            //   4) 群操作与资料修改：服务端是唯一权威副本，所有客户端看到同一份群与昵称。
+            options.groupOperation = [&registrar](const std::string &service, const std::string &self,
+                                                  const std::string &password, const std::string &params) {
+                return registrar.groupOperationFanLX(service, self, password, params);
+            };
+            options.updateProfile = [&registrar](const std::string &weixId, const std::string &password,
+                                                 const std::string &nickname, const std::string &location,
+                                                 const std::string &newPassword) {
+                return registrar.updateProfileFanLX(weixId, password, nickname, location, newPassword);
+            };
             ImServerFanLX server(app.state(), data / "im-server", imPort, imHost, options);
             SetConsoleCtrlHandler(stopImHandlerFanLX, TRUE);
             std::cout << "IM server " << imHost << ":" << server.port() << " 存储=" << server.storageBackend()

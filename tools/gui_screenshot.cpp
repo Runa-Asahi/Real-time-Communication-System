@@ -14,6 +14,7 @@
 #include "gui/RegisterDialogFanLX.h"
 #include "friend/IdentityResolverFanLX.h"
 #include "network/ImServerFanLX.h"
+#include "network/ServerAccountRegistrarFanLX.h"
 #include "persistence/DemoSeedFanLX.h"
 #include "persistence/PersistenceApplicationFanLX.h"
 #include <QApplication>
@@ -31,6 +32,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <atomic>
 #include <vector>
 
 namespace {
@@ -132,8 +134,34 @@ int main(int argc, char **argv) {
     // 2) 服务端：SQLite 消息库 + 持久实例号。认证直接查领域账号库，没有令牌表。
     ImServerFanLX::OptionsFanLX options;
     options.chatDatabasePath = root / "server" / "server-chat.db";
+    // 群与资料以服务端为权威：与 --im-server 相同的接线（见 src/main.cpp）。
+    const ServerAccountRegistrarFanLX registrar(domain);
+    options.groupOperation = [&registrar](const std::string &service, const std::string &self,
+                                          const std::string &password, const std::string &params) {
+        return registrar.groupOperationFanLX(service, self, password, params);
+    };
+    options.updateProfile = [&registrar](const std::string &weixId, const std::string &password,
+                                         const std::string &nickname, const std::string &location,
+                                         const std::string &newPassword) {
+        return registrar.updateProfileFanLX(weixId, password, nickname, location, newPassword);
+    };
     ImServerFanLX server(domain.state(), root / "server", 0, "127.0.0.1", options);
     const auto port = server.port();
+    // 服务端独占一个线程推进：领域控制器的群操作是同步短连接，主线程等应答时服务端也必须在跑。
+    std::atomic<bool> stopTicking{false};
+    std::thread ticker([&] {
+        while (!stopTicking.load())
+            server.tick();
+    });
+    struct JoinTickerFanLX {
+        std::atomic<bool> &stop;
+        std::thread &thread;
+        ~JoinTickerFanLX() {
+            stop = true;
+            if (thread.joinable())
+                thread.join();
+        }
+    } joinTicker{stopTicking, ticker};
     std::cout << "[info] server port=" << port << " storage=" << server.storageBackend()
               << " instance=" << server.instanceId() << std::endl;
 
@@ -197,7 +225,6 @@ int main(int argc, char **argv) {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(milliseconds);
         while (!predicate()) {
             QCoreApplication::processEvents();
-            server.tick();
             if (std::chrono::steady_clock::now() > deadline) {
                 std::cerr << "[FAIL] 等待超时：" << label << std::endl;
                 ++failures;
@@ -315,6 +342,80 @@ int main(int argc, char **argv) {
         check(controllers[0]->currentConversationIsGroup(), "打开群会话时判定为『群』");
         controllers[0]->openConversation(direct);
         check(!controllers[0]->currentConversationIsGroup(), "打开单聊会话时判定为『好友』");
+    }
+
+    // 5c) 群逻辑（服务端权威）：多客户端实时一致。
+    if (domains[0] && domains[1] && domains[2]) {
+        const auto hasConversation = [&](std::size_t index, const QString &key) {
+            for (const auto &item : controllers[index]->conversations())
+                if (item.key == key)
+                    return true;
+            return false;
+        };
+        const auto displayOf = [&](std::size_t index, const QString &key) {
+            for (const auto &item : controllers[index]->conversations())
+                if (item.key == key)
+                    return item.displayName;
+            return QString();
+        };
+        // 子群：演示数据里 1001 的子群 D1 = {2026001, 2026003}，聊天首页要有入口。
+        pump([&] { return hasConversation(0, QStringLiteral("g|1001#D1")); }, "子群 D1 出现在 A 的聊天首页");
+        pump([&] { return hasConversation(2, QStringLiteral("g|1001#D1")); }, "子群 D1 出现在 C 的聊天首页");
+        check(!hasConversation(1, QStringLiteral("g|1001#D1")), "非子群成员 B 的首页没有子群 D1");
+        const QString sub = QStringLiteral("g|1001#D1");
+        controllers[0]->openConversation(sub);
+        pump([&] { return controllers[0]->currentConversation() == sub; }, "A 打开子群");
+        const QString subText = QString::fromUtf8("\xE5\xAD\x90\xE7\xBE\xA4\xE6\xB6\x88\xE6\x81\xAF");
+        check(controllers[0]->sendText(sub, 0, subText), "A 在子群发消息");
+        controllers[2]->openConversation(sub);
+        pump([&] {
+            for (const auto &item : controllers[2]->messages())
+                if (item.body == subText) return true;
+            return false;
+        }, "C 收到子群消息");
+
+        // 1) 邀请群主 / 已在群成员：服务端拒绝。
+        check(!domains[2]->inviteGroupMember(QStringLiteral("QQ"), QStringLiteral("1001"), QStringLiteral("2026001")),
+              "邀请群主被拒绝");
+        check(domains[2]->lastMessage().contains(QStringLiteral("群主")), "拒绝原因说明对方是群主");
+        check(!domains[0]->inviteGroupMember(QStringLiteral("QQ"), QStringLiteral("1001"), QStringLiteral("2026002")),
+              "邀请已在群成员被拒绝");
+
+        // 2) 多管理员审批：B（管理员）批准 2026004 的申请，A（群主）那边立即变成 Approved。
+        domains[0]->syncGroupsFromServer(QStringLiteral("QQ"), QStringLiteral("1001"));
+        check(domains[0]->pendingRows(QStringLiteral("QQ"), QStringLiteral("1001")).join("\n").contains(QStringLiteral("待审批")),
+              "群主看到 2026004 待审批");
+        check(domains[1]->approveGroupApplication(QStringLiteral("QQ"), QStringLiteral("1001"), QStringLiteral("2026004"), false),
+              "管理员 B 批准 2026004");
+        pump([&] {
+            domains[0]->syncGroupsFromServer(QStringLiteral("QQ"), QStringLiteral("1001"));
+            const auto rows = domains[0]->pendingRows(QStringLiteral("QQ"), QStringLiteral("1001")).join("\n");
+            return rows.contains(QStringLiteral("Approved")) && !rows.contains(QStringLiteral("待审批"));
+        }, "群主处申请状态变为 Approved");
+        check(!domains[0]->approveGroupApplication(QStringLiteral("QQ"), QStringLiteral("1001"), QStringLiteral("2026004"), false),
+              "群主再次审批同一申请被拒绝（不重复处理）");
+
+        // 3) 群改名：服务端持久化并推给所有成员（聊天首页显示新群名）。
+        const QString newName = QString::fromUtf8("\xE7\xAD\x94\xE8\xBE\xA9\xE7\xBE\xA4");
+        check(domains[0]->renameGroup(QStringLiteral("QQ"), QStringLiteral("1001"), newName), "群主改群名");
+        pump([&] { return displayOf(1, QStringLiteral("g|1001")) == newName; }, "B 的聊天首页显示新群名");
+        pump([&] { return domains[2]->groupRows(QStringLiteral("QQ")).join("\n").contains(newName); }, "C 的群页显示新群名");
+
+        // 4) 新建群：创建者与新成员的聊天首页立即出现。
+        check(domains[1]->createGroup(QStringLiteral("QQ"), QStringLiteral("3001")), "B 新建群 3001");
+        pump([&] { return hasConversation(1, QStringLiteral("g|3001")); }, "新群出现在创建者 B 的聊天首页");
+        check(domains[1]->inviteGroupMember(QStringLiteral("QQ"), QStringLiteral("3001"), QStringLiteral("2026003")),
+              "B 邀请 C 进 3001");
+        check(domains[1]->approveGroupApplication(QStringLiteral("QQ"), QStringLiteral("3001"), QStringLiteral("2026003"), false),
+              "B 批准 C 入群");
+        pump([&] { return hasConversation(2, QStringLiteral("g|3001")); }, "新群出现在新成员 C 的聊天首页");
+        check(!hasConversation(0, QStringLiteral("g|3001")), "非成员 A 的首页没有 3001");
+
+        // 资料昵称：服务端同步后好友的聊天首页显示新昵称。
+        const QString nick = QString::fromUtf8("\xE6\x96\xB0\xE6\x98\xB5\xE7\xA7\xB0");
+        check(domains[1]->updateProfile(nick, QString()), "B 改昵称");
+        pump([&] { return displayOf(0, QStringLiteral("d|2026001|2026002")) == nick; }, "好友 A 的首页显示 B 的新昵称");
+        check(domains[1]->updateProfile(QStringLiteral("同学2"), QString()), "B 改回昵称");
     }
 
     // 6) 截图：主窗口（单聊会话 + 群聊会话）、历史查询窗口。

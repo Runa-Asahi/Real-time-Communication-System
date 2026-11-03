@@ -853,6 +853,13 @@ struct ImClientFanLX::Impl {
                 postCommandFanLX(command);
                 database->tryPost(command);
             }
+        } else if (message.type == "GROUP_NOTICE") {
+            // 群动态：服务端在群状态改变后推给所有相关在线成员（随后还会推一份新的授权目录）。
+            ImClientEventFanLX out;
+            out.kind = ImClientEventFanLX::KindFanLX::GroupNotice;
+            out.target = message.recipient;
+            out.detail = message.text;
+            pushEvent(std::move(out));
         } else if (message.type == "FRIEND_NOTICE") {
             // 好友动态（收到申请 / 申请被同意 / 被删除）：服务端中转推送，界面据此刷新申请列表。
             ImClientEventFanLX out;
@@ -1574,4 +1581,104 @@ bool ImClientFanLX::friendOperationFanLX(const std::string &host, unsigned short
     } catch (const std::exception &error) {
         return fail(error.what());
     }
+}
+namespace {
+// 一次性短连接请求：连上 → 发一帧 → 等一帧应答。
+bool oneShotRequestFanLX(const std::string &host, unsigned short port, ChatMessageFanLX request,
+                         const std::string &expected, std::string &resultText, std::string &reason,
+                         bool *answered, int timeoutMs) {
+    const auto fail = [&reason](const std::string &text) {
+        reason = text;
+        return false;
+    };
+    if (answered)
+        *answered = false;
+    if (timeoutMs <= 0)
+        timeoutMs = 4000;
+    try {
+        auto peer = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
+        if (peer->ended())
+            return fail(peer->error().empty() ? std::string("无法连接服务端") : peer->error());
+        if (!peer->trySend(request) || !peer->flushSend(16))
+            return fail("发送请求失败");
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            auto reply = peer->poll();
+            if (!reply) {
+                if (peer->ended())
+                    return fail(peer->error().empty() ? std::string("服务端关闭了连接") : peer->error());
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                continue;
+            }
+            if (answered)
+                *answered = true;
+            if (reply->type != expected)
+                return fail(reply->text.empty() ? std::string("服务端拒绝了该操作") : reply->text);
+            resultText = reply->text;
+            reason.clear();
+            return true;
+        }
+        return fail("等待服务端应答超时");
+    } catch (const std::exception &error) {
+        return fail(error.what());
+    }
+}
+} // namespace
+
+bool ImClientFanLX::groupOperationFanLX(const std::string &host, unsigned short port, const std::string &service,
+                                        const std::string &selfAccount, const std::string &password,
+                                        const std::string &paramsJson, std::string &resultJson,
+                                        std::string &reason, bool *answered, int timeoutMs) {
+    if (answered)
+        *answered = false;
+    if (host.empty() || port == 0 || selfAccount.empty() || password.empty()) {
+        reason = "群操作需要服务器地址、端口与本人通道凭据";
+        return false;
+    }
+    nlohmann::json body;
+    try {
+        body = nlohmann::json::parse(paramsJson);
+    } catch (const std::exception &) {
+        reason = "群操作参数不是合法 JSON";
+        return false;
+    }
+    body["self"] = selfAccount;
+    body["password"] = password;
+    auto request = socketIoFanLX::control("GROUP");
+    request.service = service;
+    request.sender = selfAccount;
+    request.text = body.dump();
+    if (!oneShotRequestFanLX(host, port, request, "GROUP_RESULT", resultJson, reason, answered, timeoutMs))
+        return false;
+    try {
+        const auto parsed = nlohmann::json::parse(resultJson);
+        if (!parsed.is_object() || !parsed.value("ok", false)) {
+            reason = "服务端群应答格式错误";
+            return false;
+        }
+    } catch (const std::exception &) {
+        reason = "服务端群应答不是合法 JSON";
+        return false;
+    }
+    return true;
+}
+
+bool ImClientFanLX::syncProfileFanLX(const std::string &host, unsigned short port, const std::string &weixId,
+                                     const std::string &password, const std::string &nickname,
+                                     const std::string &location, const std::string &newPassword,
+                                     std::string &reason, bool *answered, int timeoutMs) {
+    if (answered)
+        *answered = false;
+    if (host.empty() || port == 0 || weixId.empty() || password.empty()) {
+        reason = "资料同步需要服务器地址与本人凭据";
+        return false;
+    }
+    auto request = socketIoFanLX::control("PROFILE");
+    request.service = "QQ"; // 帧格式要求聊天服务名；资料按微X号（sender）认证，与通道无关
+    request.sender = weixId;
+    request.text = nlohmann::json{{"password", password}, {"nickname", nickname}, {"location", location},
+                                  {"newPassword", newPassword}}
+                       .dump();
+    std::string ignored;
+    return oneShotRequestFanLX(host, port, request, "PROFILE_OK", ignored, reason, answered, timeoutMs);
 }
