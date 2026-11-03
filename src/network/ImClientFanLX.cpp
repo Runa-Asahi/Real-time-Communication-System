@@ -430,7 +430,7 @@ struct ImClientFanLX::Impl {
                 pendingSends.erase(event.commandId);
             }
             // 投递失败不是“刚发出的那条被拒绝”。messageId 内容冲突表示本地编号和服务端
-            // 不是同一份历史（常见原因：9500 上跑着另一份数据目录的服务端）。
+            // 不是同一份历史（常见原因：9620 上跑着另一份数据目录的服务端）。
             out.kind = delivery ? ImClientEventFanLX::KindFanLX::Error
                                 : ImClientEventFanLX::KindFanLX::SendRejected;
             out.detail = event.failureReason;

@@ -1,13 +1,23 @@
 ﻿param(
     [ValidateSet('local', 'lan-server', 'lan-client')][string]$Mode = 'local',
     [string]$ServerHost = '',
-    [string]$Port = '9500'
+    [string]$Port = ''
 )
 # Ciallo 发布包启动器。由同目录的 Ciallo*.bat 调用（bat 只做 chcp 与转发，保持纯 ASCII）。
 #   local       本机：自动初始化并后台启动服务端（127.0.0.1），再打开客户端
 #   lan-server  局域网主机：服务端监听 0.0.0.0，本机同时打开一个客户端，并显示本机局域网 IP
 #   lan-client  局域网其它电脑：只打开客户端，连接输入的服务器 IP
 $ErrorActionPreference = 'Stop'
+# 端口：命令行 -Port > 环境变量 CIALLO_PORT > 包内 data\port.txt > 默认 9620。
+# 答辩版默认 9620（旧版本默认 9500），两版可以同时运行、互不干扰。
+if (-not $Port) { $Port = $env:CIALLO_PORT }
+if (-not $Port -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'data\port.txt'))) {
+    $Port = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'data\port.txt') -Raw).Trim()
+}
+if (-not $Port) { $Port = '9620' }
+if ($Port -notmatch '^\d{2,5}$' -or [int]$Port -lt 1024 -or [int]$Port -gt 65535) {
+    Write-Host "[错误] 端口非法：$Port（应为 1024-65535）"; exit 1
+}
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 function Pause-Exit([int]$code) {

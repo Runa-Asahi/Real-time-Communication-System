@@ -94,7 +94,7 @@ int wmain(int argc, wchar_t **argv) {
         bool imServer = false;
         std::string imHost = "127.0.0.1";
         bool imClient = false;
-        unsigned short imPort = 9500;
+        unsigned short imPort = 9620;
         // 扩展项：--im-sqlite 使用 SQLite 聊天库；--im-migrate 把旧 JSON 离线迁移到 SQLite。
         bool imSqlite = false;
         bool imMigrate = false;

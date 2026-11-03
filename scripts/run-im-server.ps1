@@ -48,8 +48,8 @@ try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } 
 
 # ===== 默认配置：要改就改这里 ==============================================
 $defaultBindHost = '127.0.0.1'
-$defaultPort     = '9500'
-$defaultDataDir  = 'data-im-server'
+$defaultPort     = '9620'
+$defaultDataDir  = 'data-defense'
 $defaultExe      = 'build\fanlx_app.exe'
 # 1 = 用 SQLite 消息库(im-server\server-chat.db)；0 = 用旧 JSON 日志
 $defaultUseSqlite = '1'
