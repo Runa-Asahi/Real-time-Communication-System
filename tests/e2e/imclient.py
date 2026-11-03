@@ -1,21 +1,27 @@
-import socket, struct, json, time, itertools
+import socket, struct, json, time, itertools, threading
 _seq = itertools.count(1)
-def frame(type_, service="QQ", sender="", recipient="", text="", scope="direct", requestId=""):
+def frame(type_, service="QQ", sender="", recipient="", text="", scope="direct", requestId="", messageId=0, conversationSeq=0):
     v = {"version": 2, "service": service, "sender": sender, "recipient": recipient, "sequence": 0,
-         "text": text, "type": type_, "requestId": requestId, "scope": scope, "messageId": 0, "conversationSeq": 0}
+         "text": text, "type": type_, "requestId": requestId, "scope": scope, "messageId": messageId, "conversationSeq": conversationSeq}
     p = json.dumps(v, ensure_ascii=False).encode()
     return struct.pack(">I", len(p)) + p
 class Conn:
     def __init__(self, port, host="127.0.0.1"):
-        self.s = socket.create_connection((host, port), timeout=10); self.buf = b""; self.inbox = []
-    def send(self, **kw): self.s.sendall(frame(**kw))
+        self.s = socket.create_connection((host, port), timeout=10); self.buf = b""; self.inbox = []; self.lock = threading.Lock()
+    def send(self, **kw):
+        with self.lock: self.s.sendall(frame(**kw))
     def recv(self, timeout=8):
         self.s.settimeout(timeout); end = time.time() + timeout
         while True:
             if len(self.buf) >= 4:
                 n = struct.unpack(">I", self.buf[:4])[0]
                 if len(self.buf) >= 4 + n:
-                    m = json.loads(self.buf[4:4+n]); self.buf = self.buf[4+n:]; return m
+                    m = json.loads(self.buf[4:4+n]); self.buf = self.buf[4+n:]
+                    if m.get("type") == "DELIVER":  # 与 GUI 一样确认投递，否则服务端 10 秒后断开
+                        self.send(type_="ACK", service=m.get("service", "QQ"), recipient=m.get("recipient", ""),
+                                  scope=m.get("scope", "direct"), messageId=m.get("messageId", 0),
+                                  conversationSeq=m.get("conversationSeq", 0))
+                    return m
             if time.time() > end: return None
             try: d = self.s.recv(65536)
             except socket.timeout: return None
@@ -46,6 +52,13 @@ class Chat:
         m = self.c.wait(lambda m: m["type"] in ("LOGIN_OK", "ERROR"))
         assert m and m["type"] == "LOGIN_OK", m
         self.c.send(type_="DIRECTORY", service=service, sender=account)
+        # 与 GUI 一样定时心跳（服务端 20 秒无流量会断开）
+        def beat():
+            while True:
+                time.sleep(5)
+                try: self.c.send(type_="PING", service=service, sender=account)
+                except OSError: return
+        threading.Thread(target=beat, daemon=True).start()
     def directory(self, timeout=8):
         m = self.c.wait(lambda m: m["type"] == "DIRECTORY_LIST", timeout)
         return json.loads(m["text"]) if m else None

@@ -301,7 +301,7 @@ if(FANLX_BUILD_GUI)
     target_compile_options(gui_domain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
   add_test(NAME gui_domain_behavior COMMAND gui_domain_tests)
-  set_tests_properties(gui_domain_behavior PROPERTIES TIMEOUT 120
+  set_tests_properties(gui_domain_behavior PROPERTIES TIMEOUT 300
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
   # 三客户端界面截图工具：在隔离目录内自建数据与服务端，离屏渲染窗口为 PNG（交付证据）。

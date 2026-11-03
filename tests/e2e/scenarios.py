@@ -117,7 +117,11 @@ ok2, r2 = group(P, "QQ", "2026002", PW, op="approve", group="1001", target="2026
 check("6h 已拒绝的申请不能再被另一管理员批准", ok and not ok2, (r, r2))
 ok, r = group(P, "QQ", "2026005", PW, op="dissolve", group="2077")
 check("6i 解散群", ok, r)
-d3 = c3.latest_directory(3)
+d3 = None
+for _ in range(60):
+    x = c3.directory(1.5)
+    if x is not None: d3 = x
+    if d3 and "2077" not in d3["groups"]: break
 check("6j 解散后成员首页群消失", d3 and "2077" not in d3["groups"], d3 and d3["groups"])
 # wechat invitation flow
 ok, r = group(P, "Wechat", "wx_2026001", PW, op="invite", group="1002", target="wx_2026005")

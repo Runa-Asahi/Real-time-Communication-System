@@ -1411,10 +1411,38 @@ bool ImClientFanLX::registerAccountFanLX(const std::string &host, unsigned short
         return fail("登记账号需要服务器地址、端口、微X号与密码");
     if (timeoutMs <= 0)
         timeoutMs = 4000;
+    // 连不上的服务端短时间内不再重试：Windows 上连接本机未监听端口要等约 2 秒，
+    // 离线（本地库回退）时每个群操作都等一次会让界面明显卡顿。
+    static std::mutex unreachableMutex;
+    static std::map<std::string, std::chrono::steady_clock::time_point> unreachableUntil;
+    const auto key = host + ":" + std::to_string(port);
+    {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        const auto found = unreachableUntil.find(key);
+        if (found != unreachableUntil.end() && std::chrono::steady_clock::now() < found->second)
+            return fail("无法连接服务端（稍后自动重试）");
+    }
+    const auto markUnreachable = [&]() {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        unreachableUntil[key] = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    };
     try {
-        auto peer = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
-        if (peer->ended())
+        std::unique_ptr<TcpPeerFanLX> peerHolder;
+        try {
+            peerHolder = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
+        } catch (...) {
+            markUnreachable();
+            throw;
+        }
+        auto &peer = peerHolder;
+        if (peer->ended()) {
+            markUnreachable();
             return fail(peer->error().empty() ? std::string("无法连接服务端") : peer->error());
+        }
+        {
+            std::lock_guard<std::mutex> lock(unreachableMutex);
+            unreachableUntil.erase(key);
+        }
         // 资料放 JSON 里（与 DIRECTORY_LIST 同一套做法），密码单独在 password 字段；
         // services 是本机已开通的下级服务，服务端据此补建服务账号（否则登录会报"未开通"）。
         nlohmann::json profile{{"password", password},
@@ -1475,10 +1503,38 @@ bool ImClientFanLX::lookupAccountFanLX(const std::string &host, unsigned short p
         return fail("查询账号需要服务器地址、端口、本人通道凭据与对端号码");
     if (timeoutMs <= 0)
         timeoutMs = 4000;
+    // 连不上的服务端短时间内不再重试：Windows 上连接本机未监听端口要等约 2 秒，
+    // 离线（本地库回退）时每个群操作都等一次会让界面明显卡顿。
+    static std::mutex unreachableMutex;
+    static std::map<std::string, std::chrono::steady_clock::time_point> unreachableUntil;
+    const auto key = host + ":" + std::to_string(port);
+    {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        const auto found = unreachableUntil.find(key);
+        if (found != unreachableUntil.end() && std::chrono::steady_clock::now() < found->second)
+            return fail("无法连接服务端（稍后自动重试）");
+    }
+    const auto markUnreachable = [&]() {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        unreachableUntil[key] = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    };
     try {
-        auto peer = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
-        if (peer->ended())
+        std::unique_ptr<TcpPeerFanLX> peerHolder;
+        try {
+            peerHolder = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
+        } catch (...) {
+            markUnreachable();
+            throw;
+        }
+        auto &peer = peerHolder;
+        if (peer->ended()) {
+            markUnreachable();
             return fail(peer->error().empty() ? std::string("无法连接服务端") : peer->error());
+        }
+        {
+            std::lock_guard<std::mutex> lock(unreachableMutex);
+            unreachableUntil.erase(key);
+        }
         // 不复用 LOGIN：查询方此刻正连着自己的聊天通道，再登录一次会被单设备策略拒绝。
         // 因此把"本人账号 + 密码"放在查询报文里，由服务端做一次凭据校验后回答。
         auto request = socketIoFanLX::control("LOOKUP");
@@ -1538,10 +1594,38 @@ bool ImClientFanLX::friendOperationFanLX(const std::string &host, unsigned short
         return fail("请填写对方号码");
     if (timeoutMs <= 0)
         timeoutMs = 4000;
+    // 连不上的服务端短时间内不再重试：Windows 上连接本机未监听端口要等约 2 秒，
+    // 离线（本地库回退）时每个群操作都等一次会让界面明显卡顿。
+    static std::mutex unreachableMutex;
+    static std::map<std::string, std::chrono::steady_clock::time_point> unreachableUntil;
+    const auto key = host + ":" + std::to_string(port);
+    {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        const auto found = unreachableUntil.find(key);
+        if (found != unreachableUntil.end() && std::chrono::steady_clock::now() < found->second)
+            return fail("无法连接服务端（稍后自动重试）");
+    }
+    const auto markUnreachable = [&]() {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        unreachableUntil[key] = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    };
     try {
-        auto peer = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
-        if (peer->ended())
+        std::unique_ptr<TcpPeerFanLX> peerHolder;
+        try {
+            peerHolder = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
+        } catch (...) {
+            markUnreachable();
+            throw;
+        }
+        auto &peer = peerHolder;
+        if (peer->ended()) {
+            markUnreachable();
             return fail(peer->error().empty() ? std::string("无法连接服务端") : peer->error());
+        }
+        {
+            std::lock_guard<std::mutex> lock(unreachableMutex);
+            unreachableUntil.erase(key);
+        }
         auto request = socketIoFanLX::control("FRIEND");
         request.service = service;
         request.sender = peerAccount;
@@ -1595,10 +1679,38 @@ bool oneShotRequestFanLX(const std::string &host, unsigned short port, ChatMessa
         *answered = false;
     if (timeoutMs <= 0)
         timeoutMs = 4000;
+    // 连不上的服务端短时间内不再重试：Windows 上连接本机未监听端口要等约 2 秒，
+    // 离线（本地库回退）时每个群操作都等一次会让界面明显卡顿。
+    static std::mutex unreachableMutex;
+    static std::map<std::string, std::chrono::steady_clock::time_point> unreachableUntil;
+    const auto key = host + ":" + std::to_string(port);
+    {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        const auto found = unreachableUntil.find(key);
+        if (found != unreachableUntil.end() && std::chrono::steady_clock::now() < found->second)
+            return fail("无法连接服务端（稍后自动重试）");
+    }
+    const auto markUnreachable = [&]() {
+        std::lock_guard<std::mutex> lock(unreachableMutex);
+        unreachableUntil[key] = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    };
     try {
-        auto peer = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
-        if (peer->ended())
+        std::unique_ptr<TcpPeerFanLX> peerHolder;
+        try {
+            peerHolder = TcpPeerFanLX::connect(host, port, std::chrono::milliseconds(timeoutMs));
+        } catch (...) {
+            markUnreachable();
+            throw;
+        }
+        auto &peer = peerHolder;
+        if (peer->ended()) {
+            markUnreachable();
             return fail(peer->error().empty() ? std::string("无法连接服务端") : peer->error());
+        }
+        {
+            std::lock_guard<std::mutex> lock(unreachableMutex);
+            unreachableUntil.erase(key);
+        }
         if (!peer->trySend(request) || !peer->flushSend(16))
             return fail("发送请求失败");
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
