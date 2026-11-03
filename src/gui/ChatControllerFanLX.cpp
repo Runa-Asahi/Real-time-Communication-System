@@ -26,7 +26,8 @@ QString normalizeServiceFanLX(const QString &service) {
 
 // 目录应答是 JSON 文本；解析失败时明确报错，不静默丢弃。
 bool parseDirectoryFanLX(const std::string &text, QList<QString> &friends, QList<QString> &groups,
-                         QList<QPair<QString, int>> &temporary, int &limit) {
+                         QList<QPair<QString, int>> &temporary, int &limit,
+                         QHash<QString, QString> *names = nullptr) {
     try {
         const auto parsed = nlohmann::json::parse(text);
         if (parsed.value("schema", std::string()) != "fanlx-directory-1")
@@ -43,6 +44,11 @@ bool parseDirectoryFanLX(const std::string &text, QList<QString> &friends, QList
             }
         }
         limit = parsed.value("limit", 10);
+        if (names && parsed.contains("names") && parsed.at("names").is_object())
+            for (const auto &item : parsed.at("names").items())
+                if (item.value().is_string())
+                    names->insert(QString::fromStdString(item.key()),
+                                  QString::fromUtf8(item.value().get<std::string>().c_str()));
         return true;
     } catch (const std::exception &) {
         return false;
@@ -214,6 +220,7 @@ void ChatControllerFanLX::stop() {
     stateFanLX = ConnectionStateFanLX::Disconnected;
     cancelSearch();
     authorizedFriendsFanLX.clear(); authorizedGroupsFanLX.clear();
+    displayNamesFanLX.clear(); directoryLoadedFanLX = false;
     temporaryPeersFanLX.clear();
     openedTemporaryFanLX.clear();
     conversationsFanLX.clear();
@@ -487,6 +494,7 @@ void ChatControllerFanLX::applyConversationsFanLX(
             const auto selfIndex = parts.size() > 1 && parts.at(1) == accountFanLX ? 2 : 1;
             item.title = parts.size() > selfIndex ? parts.at(selfIndex) : item.key;
         }
+        item.displayName = displayNamesFanLX.value(item.title);
         item.unread = row.unreadCount;
         item.subtitle = truncateFanLX(QString::fromStdString(row.lastMessageBody));
         item.timeText = QString(); // 会话摘要不携带服务器时间：界面显示"原始时间未知"而不是本地时间
@@ -494,6 +502,11 @@ void ChatControllerFanLX::applyConversationsFanLX(
         const auto tempRemaining = item.group ? -1 : directKindFanLX(item.title);
         item.temporaryRemaining = tempRemaining;
         applyKindFanLX(item, item.group, tempRemaining);
+        // 本人已退出 / 被移出 / 群已解散：历史仍可查看，但明确标出，不让人误以为还能发。
+        if (item.group && directoryLoadedFanLX && !authorizedGroupsFanLX.contains(item.title)) {
+            item.kindText = QStringLiteral("已退出");
+            item.kindColor = QStringLiteral("#888888");
+        }
         conversationsFanLX.push_back(item);
     }
     // 尚无历史的授权联系人和群也必须可点击，才能发起第一条消息。
@@ -501,6 +514,7 @@ void ChatControllerFanLX::applyConversationsFanLX(
         for (const auto &item : conversationsFanLX) if (item.key == key) return;
         ConversationItemFanLX item;
         item.key = key; item.title = title; item.group = group; item.temporaryRemaining = tempRemaining;
+        item.displayName = displayNamesFanLX.value(title);
         applyKindFanLX(item, group, tempRemaining);
         conversationsFanLX.push_back(item);
     };
@@ -521,7 +535,11 @@ void ChatControllerFanLX::applyConversationsFanLX(
 // 放在控制器里而不是各控件里，保证三处显示永远一致。
 void ChatControllerFanLX::applyKindFanLX(ConversationItemFanLX &item, bool group, int temporaryRemaining) {
     item.group = group;
-    if (group) {
+    if (group && item.title.contains(QLatin1Char('#'))) {
+        item.kindText = QStringLiteral("子群");
+        item.kindColor = QStringLiteral("#ad1457");
+        item.temporaryRemaining = -1;
+    } else if (group) {
         item.kindText = QStringLiteral("群");
         item.kindColor = QStringLiteral("#7b1fa2");
         item.temporaryRemaining = -1;
@@ -621,7 +639,10 @@ void ChatControllerFanLX::drainEventsFanLX() {
             QList<QString> friends, groups;
             QList<QPair<QString, int>> temporary;
             int limit = 10;
-            if (parseDirectoryFanLX(event->detail, friends, groups, temporary, limit)) {
+            QHash<QString, QString> names;
+            if (parseDirectoryFanLX(event->detail, friends, groups, temporary, limit, &names)) {
+                displayNamesFanLX = names;
+                directoryLoadedFanLX = true;
                 authorizedFriendsFanLX = friends;
                 authorizedGroupsFanLX = groups;
                 temporaryPeersFanLX = temporary;
@@ -641,6 +662,10 @@ void ChatControllerFanLX::drainEventsFanLX() {
             // 否则界面会静默停在"重连中"，用户不知道原因。
             if (!event->detail.empty())
                 emit errorFanLX(QString::fromStdString(event->detail));
+            break;
+        case KindFanLX::GroupNotice:
+            emit groupNoticeFanLX(QString::fromStdString(event->target), QString::fromStdString(event->detail));
+            requestDirectory(); // 新群 / 子群 / 改名立即进入聊天首页
             break;
         case KindFanLX::FriendNotice:
             if (!event->detail.empty())

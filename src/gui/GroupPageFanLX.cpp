@@ -253,6 +253,13 @@ QWidget *GroupPageFanLX::buildHomeFanLX() {
                 refreshFanLX();
             });
     connect(groupEditFanLX, &QLineEdit::editingFinished, this, &GroupPageFanLX::refreshFanLX);
+    // 点成员行：把账号填进"成员操作"和"子群拉人"的目标框，不用手抄号码。
+    connect(memberListFanLX, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (!item) return;
+        const auto account = idOfRowFanLX(item->text());
+        if (memberTargetEditFanLX) memberTargetEditFanLX->setText(account);
+        if (discussionTargetEditFanLX) discussionTargetEditFanLX->setText(account);
+    });
     connect(joinNavFanLX, &QPushButton::clicked, this, [this] { stackFanLX->setCurrentIndex(kJoinPage); });
     connect(memberNav, &QPushButton::clicked, this, [this] { stackFanLX->setCurrentIndex(kMemberPage); });
     connect(discussionNavFanLX, &QPushButton::clicked, this,
@@ -363,6 +370,16 @@ QWidget *GroupPageFanLX::buildJoinBodyFanLX() {
     layout->addWidget(pendingCaption);
     mountListFanLX(layout, pendingListFanLX, 1,
                    new GroupListDelegateFanLX(GroupListDelegateFanLX::Kind::Pending, pendingListFanLX));
+    // 点待处理行：把申请人账号填进审批框（"入群申请：<账号> ｜ 状态 …"）。
+    connect(pendingListFanLX, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (!item) return;
+        auto head = idOfRowFanLX(item->text());
+        const auto colon = head.indexOf(QStringLiteral("："));
+        if (colon >= 0) head = head.mid(colon + 1);
+        const auto invite = head.indexOf(QStringLiteral(" 邀请 "));
+        if (invite >= 0) head = head.mid(invite + 4);
+        targetAccountEditFanLX->setText(head.trimmed());
+    });
     layout->addSpacing(16);
     layout->addWidget(leaveButtonFanLX, 0, Qt::AlignLeft);
 
@@ -378,7 +395,13 @@ QWidget *GroupPageFanLX::buildJoinBodyFanLX() {
         controllerFanLX->approveGroupApplication(service(), group(), target(), true);
     });
     connect(inviteButtonFanLX, &QPushButton::clicked, this, [this, service, group] {
-        if (controllerFanLX->inviteGroupMember(service(), group(), inviteTargetEditFanLX->text().trimmed()))
+        const auto who = inviteTargetEditFanLX->text().trimmed();
+        if (!who.isEmpty() && controllerFanLX->isGroupMember(service(), group(), who)) {
+            QMessageBox::information(this, QStringLiteral("邀请入群"),
+                                     QStringLiteral("%1 已经在群里（群主或成员），不需要邀请。").arg(who));
+            return;
+        }
+        if (controllerFanLX->inviteGroupMember(service(), group(), who))
             inviteTargetEditFanLX->clear();
     });
     connect(confirmInviteButtonFanLX, &QPushButton::clicked, this, [this, service, group] {
@@ -503,6 +526,12 @@ QWidget *GroupPageFanLX::buildDiscussionBodyFanLX() {
     layout->addWidget(listCaption);
     mountListFanLX(layout, discussionListFanLX, 1,
                    new GroupListDelegateFanLX(GroupListDelegateFanLX::Kind::Discussion, discussionListFanLX));
+    connect(discussionListFanLX, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (!item) return;
+        auto head = idOfRowFanLX(item->text());
+        if (head.startsWith(QStringLiteral("子群 "))) head = head.mid(3);
+        discussionIdEditFanLX->setText(head.trimmed());
+    });
 
     const auto service = [this] { return controllerFanLX->currentService(); };
     const auto group = [this] { return groupIdFanLX(); };
@@ -603,6 +632,38 @@ QWidget *GroupPageFanLX::buildSettingsBodyFanLX() {
     return body;
 }
 
+// 按本人在该群的角色启用 / 禁用按钮（只在服务端模式下：权限判定本来就在服务端，
+// 这里只是让界面别引导用户去点一定会被拒绝的按钮）。
+void GroupPageFanLX::applyPermissionsFanLX(const QString &service, const QString &group) {
+    const bool server = controllerFanLX->usingServerGroups(service);
+    const auto role = controllerFanLX->myGroupRole(service, group);
+    const bool member = !role.isEmpty();
+    const bool owner = role == QStringLiteral("群主");
+    const bool manager = owner || role == QStringLiteral("管理员");
+    const auto gate = [server](QPushButton *button, bool allowed, const QString &why) {
+        if (!button) return;
+        button->setEnabled(!server || allowed);
+        button->setToolTip(server && !allowed ? why : QString());
+    };
+    const auto needManager = QStringLiteral("需要群主或管理员权限");
+    const auto needOwner = QStringLiteral("需要群主权限");
+    gate(approveButtonFanLX, manager, needManager);
+    gate(rejectApplyButtonFanLX, manager, needManager);
+    gate(inviteButtonFanLX, member, QStringLiteral("只有群成员可以邀请"));
+    gate(applyButtonFanLX, !member, QStringLiteral("你已经是群成员"));
+    gate(leaveButtonFanLX, member && !owner, owner ? QStringLiteral("群主请先转让群主再退群") : QStringLiteral("你不是群成员"));
+    gate(kickButtonFanLX, manager, needManager);
+    gate(assignAdminButtonFanLX, owner, needOwner);
+    gate(revokeAdminButtonFanLX, owner, needOwner);
+    gate(transferButtonFanLX, owner, needOwner);
+    gate(createDiscussionButtonFanLX, manager, needManager);
+    gate(joinDiscussionButtonFanLX, manager, needManager);
+    gate(renameButtonFanLX, owner, needOwner);
+    gate(dissolveButtonFanLX, owner, needOwner);
+    gate(toQqButtonFanLX, owner, needOwner);
+    gate(toWechatButtonFanLX, owner, needOwner);
+}
+
 QString GroupPageFanLX::groupIdFanLX() const { return groupEditFanLX->text().trimmed(); }
 
 void GroupPageFanLX::applyServiceFanLX(const QString &service) {
@@ -656,6 +717,8 @@ void GroupPageFanLX::refreshFanLX() {
         groupEditFanLX->clear();
     }
 
+    // 群数据以服务端为准：每次刷新先拉一次（连不上时读视图自动退回本机库）。
+    controllerFanLX->syncGroupsFromServer(service, groupIdFanLX());
     // 群列表：只在内容变化时重建，避免每次刷新都把选中项清掉。
     const auto rows = controllerFanLX->groupRows(service);
     if (serviceChanged || groupListFanLX->count() != rows.size()) {
@@ -686,6 +749,7 @@ void GroupPageFanLX::refreshFanLX() {
         label->setText(group.isEmpty() ? QStringLiteral("尚未选择群：请先回到首页选中或填写群号")
                                        : QStringLiteral("操作对象: 群 %1").arg(group));
 
+    applyPermissionsFanLX(service, group);
     const auto policy = controllerFanLX->policyText(service, group);
     policyViewFanLX->setPlainText(policy);
     // 只提供"切换为另一种"的按钮：已经是 QQ 特色就不再显示"切换为 QQ"。

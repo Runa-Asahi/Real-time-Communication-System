@@ -1,8 +1,8 @@
 ﻿param(
     # 位置参数顺序：先端口、再账号。
     # .bat 用 %* 原样转发，所以第一个位置参数必须是端口；否则
-    # `run-gui.bat 9500` 会把 9500 绑到主机名上，服务端报「IM 端口非法」。
-    [Parameter(Position = 0)][string]$Port = '9500',
+    # `run-gui.bat 9620` 会把 9620 绑到主机名上，服务端报「IM 端口非法」。
+    [Parameter(Position = 0)][string]$Port = '9620',
     [Parameter(Position = 1)][string]$Account = '2026001',
     [string]$BindHost = '127.0.0.1',
     [string]$Password = '123',
@@ -96,7 +96,7 @@ try {
                 $listener = Get-CimInstance Win32_Process -Filter "ProcessId=$listenPid" -ErrorAction SilentlyContinue
                 if ($listener) { $listenerCommand = $listener.CommandLine }
             }
-            $ownDataDir = Join-Path $root 'data-im-server'
+            $ownDataDir = Join-Path $root 'data-defense'
             $usesThisServer = $false
             if ($listenerCommand) {
                 $normalized = ($listenerCommand -replace '/', '\').ToLowerInvariant()
@@ -120,7 +120,7 @@ try {
             Write-Host ''
         } else {
             Write-Host "[信息] 正在启动本地服务端 $BindHost`:$Port ..."
-            $srvArgs = @('--data-dir', (Join-Path $root 'data-im-server'),
+            $srvArgs = @('--data-dir', (Join-Path $root 'data-defense'),
                          '--im-server', '--im-host', $BindHost, '--im-port', $Port, '--im-sqlite')
             $serverProc = Start-Process -FilePath $srvExe -ArgumentList $srvArgs -PassThru `
                 -WindowStyle Hidden `

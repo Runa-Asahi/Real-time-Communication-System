@@ -209,11 +209,11 @@ powershell -File scripts/deploy-gui.ps1 -TargetDir build -QtBin "E:/Qt/6.11.1/mi
 # 三端联调：服务端 + 三个 GUI 客户端（共用一个数据根，账号子目录自动派生）
 # 登录凭据为「微X号 + 用户自选密码」，演示数据密码统一为 123，无需任何令牌文件
 .\build\fanlx_app.exe --data-dir data-im-server --init-demo
-.\build\fanlx_app.exe --data-dir data-im-server --im-server --im-sqlite --im-host 127.0.0.1 --im-port 9500
+.\build\fanlx_app.exe --data-dir data-im-server --im-server --im-sqlite --im-host 127.0.0.1 --im-port 9620
 # 或直接用启动脚本（会检查快照格式，旧库自动改名保留并重建）：scripts\run-im-server.bat
-.\build\fanlx_gui.exe --host 127.0.0.1 --port 9500 --account 2026001 --password 123
-.\build\fanlx_gui.exe --host 127.0.0.1 --port 9500 --account 2026002 --password 123
-.\build\fanlx_gui.exe --host 127.0.0.1 --port 9500 --account 2026003 --password 123
+.\build\fanlx_gui.exe --host 127.0.0.1 --port 9620 --account 2026001 --password 123
+.\build\fanlx_gui.exe --host 127.0.0.1 --port 9620 --account 2026002 --password 123
+.\build\fanlx_gui.exe --host 127.0.0.1 --port 9620 --account 2026003 --password 123
 # 加 --auto-login 可跳过登录窗口；--account 填的是微X号，聊天连接另按"当前服务"取该服务的号码
 ```
 

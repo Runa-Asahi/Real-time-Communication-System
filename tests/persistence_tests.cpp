@@ -162,9 +162,15 @@ int wmain(int argc, wchar_t **argv) {
             // 演示数据有两对好友关系：QQ 一份、微博一份（微信保持为空，用于演示"分别存储"）。
             assert(before.bindings.size() == 12 && before.friendships.size() == 2);
             const auto generation = app.state().generation;
-            app.applyToJoin(fourth, qq);
-            assert(app.state().generation ==
-                   generation); // pending already exists, timestamp supplied by import
+            // 已有待审批申请时再申请会被明确拒绝，且不产生新的提交。
+            bool duplicateRejected = false;
+            try {
+                app.applyToJoin(fourth, qq);
+            } catch (const std::exception &) {
+                duplicateRejected = true;
+            }
+            assert(duplicateRejected);
+            assert(app.state().generation == generation);
             app.approveApplication(owner, qq, fourth);
             assert(app.state().groups.get(qq).hasMember("U4"));
             app.createDiscussion(owner, qq, "D2");
@@ -582,9 +588,15 @@ int wmain(int argc, wchar_t **argv) {
             seed.groups.front().applications.front().expiresAtUtc = "2026-09-02T00:00:00Z";
             app.importInitial(seed);
             app.login(owner, demoPasswordFanLX(owner.accountId));
-            app.approveApplication(owner, qq, fourth);
+            // 过期申请不能被批准：明确报"已过期"，且不会把人加进群。
+            bool rejected = false;
+            try {
+                app.approveApplication(owner, qq, fourth);
+            } catch (const std::exception &error) {
+                rejected = std::string(error.what()).find("已过期") != std::string::npos;
+            }
+            assert(rejected);
             assert(!app.state().groups.get(qq).hasMember("U4"));
-            assert(app.snapshot().groups.front().applications.front().status == "Expired");
         }
         // 提交途中目标被改变且未等于候选：不能把“不确定”当作已回滚或继续写。
         {

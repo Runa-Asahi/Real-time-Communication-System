@@ -21,7 +21,7 @@
 │
 ├─ data-im-a\  data-im-b\              ← 控制台客户端数据根（每个终端一个，避免互相抢锁）
 │  └─ im-client\
-│     └─ <host>_<port>\                ← 按"服务端身份"分目录（127.0.0.1_9500 这种）
+│     └─ <host>_<port>\                ← 按"服务端身份"分目录（127.0.0.1_9620 这种）
 │        └─ <账号目录名>\               ← 登录时用的标识（微X号；非 ASCII 会被转义）
 │           ├─ domain\                 ← 该账号在**本机**的领域库
 │           │  ├─ state.json           ★ 本机领域数据：资料 / 好友 / 群 / 开通关系 / 绑定
@@ -70,8 +70,8 @@
 
 | 场景 | 命令 | 用到的目录 |
 | --- | --- | --- |
-| 控制台（含聊天） | `fanlx_app.exe --data-dir data-im-a --im-host 127.0.0.1 --im-port 9500 --im-sqlite` | `data-im-a\im-client\127.0.0.1_9500\<微X号>\…` |
-| GUI | `fanlx_gui.exe --host 127.0.0.1 --port 9500 --data-root data-im-gui` | `data-im-gui\im-client\127.0.0.1_9500\<微X号>\…` |
+| 控制台（含聊天） | `fanlx_app.exe --data-dir data-im-a --im-host 127.0.0.1 --im-port 9620 --im-sqlite` | `data-im-a\im-client\127.0.0.1_9620\<微X号>\…` |
+| GUI | `fanlx_gui.exe --host 127.0.0.1 --port 9620 --data-root data-im-gui` | `data-im-gui\im-client\127.0.0.1_9620\<微X号>\…` |
 | 服务端 | `scripts\run-im-server.bat`（或 `fanlx_app.exe --data-dir data-im-server --im-server --im-sqlite`） | `data-im-server\state.json` + `data-im-server\im-server\…` |
 | 旧数据迁移 | `fanlx_app.exe --data-dir X --im-migrate [--im-migrate-dir Y]` | 把旧 JSON 服务端日志迁进 SQLite 消息库 |
 

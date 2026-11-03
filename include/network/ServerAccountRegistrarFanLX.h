@@ -44,6 +44,14 @@ class ServerAccountRegistrarFanLX {
     std::string updateFriendshipFanLX(const std::string &service, const std::string &self,
                                       const std::string &peer, bool add) const;
 
+    // 群操作：以 self 身份在服务端持久化库里执行一次群写操作（params 是 JSON 文本）。
+    std::string groupOperationFanLX(const std::string &service, const std::string &self,
+                                    const std::string &password, const std::string &params) const;
+    // 资料同步：昵称 / 所在地（空串表示不改）；newPassword 非空时同时改密（password 是旧密码）。
+    std::string updateProfileFanLX(const std::string &weixId, const std::string &password,
+                                   const std::string &nickname, const std::string &location,
+                                   const std::string &newPassword = {}) const;
+
   private:
     PersistenceApplicationFanLX &appFanLX;
 };

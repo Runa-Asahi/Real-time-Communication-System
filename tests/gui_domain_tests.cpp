@@ -282,8 +282,19 @@ void t74GroupsFanLX(DomainControllerFanLX &controller) {
     checkFanLX(controller.createGroup(QStringLiteral("QQ"), QStringLiteral("1099")), "t74 创建 QQ 群 1099");
     checkFanLX(controller.memberRows(QStringLiteral("QQ"), QStringLiteral("1099")).size() == 1,
                "t74 新群的群主就是创建者本人");
-    checkFanLX(controller.applyToJoinGroup(QStringLiteral("QQ"), QStringLiteral("1099")),
-               "t74 已在群内的申请是幂等成功");
+    checkFanLX(!controller.applyToJoinGroup(QStringLiteral("QQ"), QStringLiteral("1099")),
+               "t74 已在群内（群主）再申请被明确拒绝");
+    checkFanLX(hasFanLX(controller.lastMessage(), QStringLiteral("群主")),
+               "t74 拒绝原因说明本人已是群主");
+    checkFanLX(!controller.inviteGroupMember(QStringLiteral("QQ"), QStringLiteral("1001"),
+                                             QStringLiteral("2026002")),
+               "t74 邀请已在群里的成员被拒");
+    checkFanLX(!controller.approveGroupApplication(QStringLiteral("QQ"), QStringLiteral("1001"),
+                                                   QStringLiteral("2026004"), false),
+               "t74 已处理的申请不能重复审批");
+    checkFanLX(hasFanLX(controller.lastMessage(), QStringLiteral("已被处理")) ||
+                   hasFanLX(controller.lastMessage(), QStringLiteral("已经是")),
+               "t74 重复审批给出明确原因");
     checkFanLX(controller.pendingRows(QStringLiteral("QQ"), QStringLiteral("1099")).isEmpty(),
                "t74 群成员重复申请不会产生待审批记录");
 

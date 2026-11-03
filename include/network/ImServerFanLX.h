@@ -54,6 +54,18 @@ class ImServerFanLX {
         std::function<std::string(const std::string &service, const std::string &self,
                                   const std::string &peer, bool add)>
             updateFriendship;
+        // 群操作落地（服务端是群的唯一权威副本）：创建 / 改名 / 申请 / 审批 / 邀请 / 确认 / 退群 /
+        // 踢人 / 管理员 / 转让 / 解散 / 切换特色 / 子群。调用方在持久化库里以 self 身份执行，
+        // 成功返回空串，失败返回可直接显示的原因。为空时 GROUP 写操作被明确拒绝（list 仍可用）。
+        // params 是 JSON 文本：{"op","group","target","name","discussion","mode"}。
+        std::function<std::string(const std::string &service, const std::string &self,
+                                  const std::string &password, const std::string &params)>
+            groupOperation;
+        // 资料落地：本人改昵称 / 所在地后同步到服务端（好友与群成员看到的是服务端这份）。
+        std::function<std::string(const std::string &weixId, const std::string &password,
+                                  const std::string &nickname, const std::string &location,
+                                  const std::string &newPassword)>
+            updateProfile;
         // 非好友临时会话每个方向允许的消息条数（课设新增：允许一定限额的临时对话）。
         int temporaryMessageLimit = 10;
     };

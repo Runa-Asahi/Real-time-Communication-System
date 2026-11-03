@@ -45,6 +45,7 @@ class GroupPageFanLX : public QWidget {
     void applyServiceFanLX(const QString &service);
     // 当前选中的群号：列表选中项优先，其次手填的群号。
     QString groupIdFanLX() const;
+    void applyPermissionsFanLX(const QString &service, const QString &group);
 
     DomainControllerFanLX *controllerFanLX = nullptr;
     QStackedWidget *stackFanLX = nullptr;

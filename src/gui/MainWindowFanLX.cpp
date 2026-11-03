@@ -994,6 +994,13 @@ void MainWindowFanLX::buildDomainPagesFanLX() {
     tabsFanLX->addTab(groupPageFanLX, QStringLiteral("群"));
     // 好友动态（收到申请 / 被同意 / 被删除）：服务端经聊天通道推送。先对账本机好友清单，
     // 再刷新申请页——对方同意后好友列表立刻出现，不必重新登录。
+    // 群动态：服务端推送后刷新群缓存与群页；聊天首页由新的授权目录刷新（新群 / 子群立刻出现）。
+    connect(controllerFanLX, &ChatControllerFanLX::groupNoticeFanLX, this,
+            [this](const QString &groupId, const QString &detail) {
+                domainFanLX->onGroupNoticeFanLX(groupId);
+                if (!detail.isEmpty())
+                    statusFanLX->setText(QStringLiteral("群动态：") + detail);
+            });
     connect(controllerFanLX, &ChatControllerFanLX::friendNoticeFanLX, this, [this](const QString &detail) {
         domainFanLX->onFriendNoticeFanLX();
         friendPageFanLX->refreshRequestsFanLX();
@@ -1347,7 +1354,9 @@ void MainWindowFanLX::refreshHeaderFanLX() {
         bool group = controllerFanLX->currentConversationIsGroup();
         for (const auto &item : controllerFanLX->conversations()) {
             if (item.key == current) {
-                itemTitle = item.title;
+                itemTitle = item.displayName.isEmpty() || item.displayName == item.title
+                                ? item.title
+                                : item.displayName + QStringLiteral("（") + item.title + QStringLiteral("）");
                 group = item.group;
                 break;
             }

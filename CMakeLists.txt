@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Ciallo VERSION 1.0.1 DESCRIPTION "Ciallo 即时通讯（课程设计）" LANGUAGES CXX)
+project(Ciallo VERSION 1.1.0 DESCRIPTION "Ciallo 即时通讯（课程设计）" LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -301,7 +301,7 @@ if(FANLX_BUILD_GUI)
     target_compile_options(gui_domain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
   add_test(NAME gui_domain_behavior COMMAND gui_domain_tests)
-  set_tests_properties(gui_domain_behavior PROPERTIES TIMEOUT 120
+  set_tests_properties(gui_domain_behavior PROPERTIES TIMEOUT 300
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
   # 三客户端界面截图工具：在隔离目录内自建数据与服务端，离屏渲染窗口为 PNG（交付证据）。

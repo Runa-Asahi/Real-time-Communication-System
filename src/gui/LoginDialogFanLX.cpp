@@ -103,7 +103,7 @@ LoginDialogFanLX::LoginDialogFanLX(QWidget *parent) : QDialog(parent) {
     hostEditFanLX = new QLineEdit(QStringLiteral("127.0.0.1"), this);
     portSpinFanLX = new QSpinBox(this);
     portSpinFanLX->setRange(1, 65535);
-    portSpinFanLX->setValue(9500);
+    portSpinFanLX->setValue(9620);
     storageComboFanLX = new QComboBox(this);
     storageComboFanLX->addItem(QStringLiteral("SQLite 聊天库（推荐）"), true);
     storageComboFanLX->addItem(QStringLiteral("旧 JSON 存储（兼容）"), false);

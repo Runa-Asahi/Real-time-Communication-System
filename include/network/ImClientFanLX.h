@@ -23,6 +23,7 @@ struct ImClientEventFanLX {
         Connection,    // 连接状态变化（detail 为可显示说明）
         Notice,        // 不是错误、但必须让用户知道的事（例如旧聊天库已被归档重建）
         FriendNotice,  // 好友动态（收到好友申请 / 申请被同意 / 被删除），detail 为可显示说明
+        GroupNotice,   // 群动态（新建 / 改名 / 审批 / 邀请 / 踢人 / 子群…），target 为群号
         Error          // 其它错误
     };
     KindFanLX kind = KindFanLX::Error;
@@ -131,6 +132,19 @@ class ImClientFanLX {
                                      std::string &resultJson, std::string &reason,
                                      const std::string &via = {}, bool *answered = nullptr,
                                      int timeoutMs = 4000);
+
+    // 群操作（服务端权威）：一次性凭据短连接，与 FRIEND 同样不占用聊天通道的单设备名额。
+    // paramsJson：{"op","group","target","name","discussion","mode","summary"}；op=list / detail 只读。
+    // 成功时 resultJson 为 GROUP_RESULT 的 JSON；answered=false 表示连不上 / 超时。
+    static bool groupOperationFanLX(const std::string &host, unsigned short port, const std::string &service,
+                                    const std::string &selfAccount, const std::string &password,
+                                    const std::string &paramsJson, std::string &resultJson, std::string &reason,
+                                    bool *answered = nullptr, int timeoutMs = 4000);
+    // 资料同步（昵称 / 所在地 / 改密）：以微X号 + 当前密码认证。空串表示该项不改。
+    static bool syncProfileFanLX(const std::string &host, unsigned short port, const std::string &weixId,
+                                 const std::string &password, const std::string &nickname,
+                                 const std::string &location, const std::string &newPassword,
+                                 std::string &reason, bool *answered = nullptr, int timeoutMs = 4000);
 
     // ---- 异步接口 ----
     // 发送：先在数据库提交"待发送"，提交成功后才把 SEND 放入网络队列。

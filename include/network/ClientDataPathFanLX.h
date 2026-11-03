@@ -50,7 +50,7 @@ inline std::string escapeDirectoryNameFanLX(const std::string &raw) {
     return out;
 }
 
-// 服务器标识目录名：<host>_<port>，例如 127.0.0.1_9500。
+// 服务器标识目录名：<host>_<port>，例如 127.0.0.1_9620。
 inline std::string serverDirectoryNameFanLX(const std::string &host, unsigned short port) {
     std::string safe = host;
     for (char &ch : safe)

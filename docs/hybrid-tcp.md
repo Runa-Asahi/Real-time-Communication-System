@@ -124,7 +124,7 @@ ctest --test-dir build -R "p2p_behavior|network_behavior|im_behavior" --output-o
 | `route=RelayFallback` | 直连在 3 秒内没有完成 ACK，正文已改由服务器送出。消息编号不变。 |
 | `hello-rejected` | 端点不是 `ep:` + 点分 IPv4 + 端口，或用了 `0.0.0.0` / 域名。 |
 | 两台机器互相只能中转 | 默认绑的是 `127.0.0.1`。局域网需设置 `FANLX_P2P_BIND`。NAT 不会变成直连。 |
-| 登录报「网络操作超时」 | 服务器没在听。本机拒绝连接大约要 2 秒，聊天登录超时也是 2 秒。不要把 `Desktop\OOP\build\fanlx_app.exe` 占在 `127.0.0.1:9500` 上。 |
+| 登录报「网络操作超时」 | 服务器没在听。本机拒绝连接大约要 2 秒，聊天登录超时也是 2 秒。不要把 `Desktop\OOP\build\fanlx_app.exe` 占在 `127.0.0.1:9620` 上。 |
 
 ## 课程要求对照
 

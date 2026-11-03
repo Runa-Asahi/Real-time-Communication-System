@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
     QApplication::setWindowIcon(fanlxGui::theme::appIcon());
 
     QString host = QStringLiteral("127.0.0.1");
-    QString portText = QStringLiteral("9500");
+    QString portText = QStringLiteral("9620");
     QString account, password, dataRoot;
     QString nickname, birthDate, location;
     bool useSqlite = true;

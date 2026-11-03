@@ -35,6 +35,7 @@ Copy-Item (Join-Path $build 'fanlx_app.exe') (Join-Path $bin 'fanlx_app.exe') -F
 Get-ChildItem -LiteralPath (Join-Path $root 'scripts\release') -File |
     Copy-Item -Destination $out -Force
 Copy-Item (Join-Path $root 'docs\usage\CIALLO使用说明.md') (Join-Path $out '使用说明.md') -Force
+Copy-Item (Join-Path $root 'docs\usage\答辩演示指南.md') (Join-Path $out '答辩演示指南.md') -Force
 Copy-Item (Join-Path $root 'resources\icons\ciallo.ico') (Join-Path $out 'Ciallo.ico') -Force -ErrorAction SilentlyContinue
 
 # 简短 README
@@ -44,7 +45,11 @@ Copy-Item (Join-Path $root 'resources\icons\ciallo.ico') (Join-Path $out 'Ciallo
 双击 **Ciallo.bat** 即可在本机使用。
 局域网请看 **使用说明.md**，或直接用 **Ciallo-LAN-Server.bat** / **Ciallo-LAN-Join.bat**。
 
-演示账号：2026001 / 2026002 / 2026003，密码均为 123。
+答辩演示请先看 **答辩演示指南.md**（端口、账号、演示路线）。
+默认端口 9620（旧版本是 9500，两版可同时运行）；改端口：Ciallo.bat -Port 9630。
+停止：Ciallo-Stop.bat 只结束本文件夹启动的进程。
+
+演示账号：2026001 ~ 2026012，密码均为 123。
 "@ | Set-Content -LiteralPath (Join-Path $out 'README.txt') -Encoding UTF8
 
 Write-Host "已生成发布目录：$out"

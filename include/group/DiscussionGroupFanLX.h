@@ -50,6 +50,11 @@ class DiscussionGroupFanLX {
             archivedFanLX = true;
         return removed;
     }
+    std::vector<std::string> members() const {
+        std::vector<std::string> out(membersFanLX.begin(), membersFanLX.end());
+        std::sort(out.begin(), out.end());
+        return out;
+    }
     bool archived() const noexcept {
         return archivedFanLX;
     }

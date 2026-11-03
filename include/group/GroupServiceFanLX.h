@@ -323,6 +323,38 @@ class GroupServiceFanLX {
         return getDiscussion(parentKey, discId).addMember(group, target);
     }
 
+    // 只读查询：某人在该群的申请 / 邀请记录（没有返回 nullptr）。应用层据此在写入前给出
+    // "已是成员 / 已有待处理记录 / 已被处理"的明确错误，而不是静默吞掉重复操作。
+    const GroupApplicationFanLX *findApplication(const GroupKeyFanLX &key, const std::string &user) const {
+        auto parent = applicationsFanLX.find(key);
+        if (parent == applicationsFanLX.end()) return nullptr;
+        auto it = parent->second.find(user);
+        return it == parent->second.end() ? nullptr : &it->second;
+    }
+    const GroupInvitationFanLX *findInvitation(const GroupKeyFanLX &key, const std::string &user) const {
+        auto parent = invitationsFanLX.find(key);
+        if (parent == invitationsFanLX.end()) return nullptr;
+        auto it = parent->second.find(user);
+        return it == parent->second.end() ? nullptr : &it->second;
+    }
+    bool hasGroup(const GroupKeyFanLX &key) const {
+        return groupsFanLX.count(key) != 0;
+    }
+    bool hasDiscussion(const GroupKeyFanLX &key, const std::string &id) const {
+        auto parent = discussionsFanLX.find(key);
+        return parent != discussionsFanLX.end() && parent->second.count(id) != 0;
+    }
+    // 子群只读枚举（id 字典序），供服务端授权目录与子群消息路由使用。
+    std::vector<std::shared_ptr<const DiscussionGroupFanLX>> discussionsOf(const GroupKeyFanLX &key) const {
+        std::vector<std::shared_ptr<const DiscussionGroupFanLX>> out;
+        auto parent = discussionsFanLX.find(key);
+        if (parent != discussionsFanLX.end())
+            for (const auto &item : parent->second)
+                out.push_back(item.second);
+        std::sort(out.begin(), out.end(), [](const auto &a, const auto &b) { return a->id() < b->id(); });
+        return out;
+    }
+
     // 只读计数用于界面及幂等性验收，不暴露可写的待处理容器。
     std::size_t pendingApplicationCount(const GroupKeyFanLX &key) const {
         get(key);
